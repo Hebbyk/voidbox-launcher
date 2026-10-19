@@ -1,5 +1,5 @@
 # voidbox-launcher
-#🚀 Voidbox Launcher — The Ultimate Universal Minecraft Launcher
+🚀 Voidbox Launcher — The Ultimate Universal Minecraft Launcher
 Voidbox Launcher is a modern, lightweight, and lightning-fast open-source Minecraft launcher designed for ultimate flexibility. Whether you are jumping into heavily modded survival worlds or managing custom server packs, it gives you complete control over your game instances without the bloat.
 
 ✨ Key Features
