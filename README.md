@@ -1,30 +1,36 @@
 # voidbox-launcher
-🚀 Voidbox Launcher — The Ultimate Universal Minecraft Launcher
-Voidbox Launcher is a modern, lightweight, and lightning-fast open-source Minecraft launcher designed for ultimate flexibility. Whether you are jumping into heavily modded survival worlds or managing custom server packs, it gives you complete control over your game instances without the bloat.
+Voidbox Launcher
 
-✨ Key Features
-🌍 Universal Modpack Support: Import and play modpacks from all major ecosystems seamlessly without manual file extraction hassle.
+English | Русский
 
-🛡️ Zero Ads & Completely Free: No intrusive banner ads, no bloatware, and no tracking—just pure Minecraft.
+A free, lightweight Minecraft launcher built around modpacks: drag in a pack, press Play. No ads, no tracking.
 
-⚡ High Performance & Lightweight: Built for speed, ensuring fast startup times and minimal system resource consumption while you play.
+Download
+Go to the latest release.
+Download the .msi installer and run it.
 
-☕ Advanced Java Management: Automatically detects, manages, and downloads the correct Java runtime versions required for older and newer Minecraft versions.
+Windows only for now.
 
-🎨 Sleek & Modern UI: A clean, distraction-free interface designed with modern design principles and smooth navigation.
+SmartScreen warning: the installer isn't code-signed yet, so Windows may show "Windows protected your PC". Click More info → Run anyway.
 
-🛠️ Active Development: Constantly updated with new features, bug fixes, and community-driven improvements.
+What it does
+Imports the three big modpack formats: Modrinth (.mrpack), CurseForge (.zip) and Packwiz (pack.toml), including remote index files for auto-updating packs.
+Handles Java for you: picks the Java version each Minecraft version needs and downloads it if it's missing.
+English and Russian interface.
+Microsoft and ely.by sign-in.
+Update checks through GitHub Releases.
+No ads, no tracking.
+Community
 
-📦 Supported Modpack Formats
-Never worry about compatibility issues again. Voidbox Launcher natively supports the three most popular modpack ecosystems:
+Questions, bug reports and ideas are welcome on the Discord server. English and Russian are both fine.
 
-Modrinth (.mrpack): Native support for Modrinth’s open standard format, automatically fetching and verifying mods, configs, and overrides.
+Something went wrong?
 
-CurseForge (.zip): Full compatibility with standard CurseForge exported modpack zips—just drag and drop to install.
+Ask in #help on Discord or open an Issue, and attach the game log. Paste this path into the Explorer address bar:
 
-Packwiz (pack.toml): Seamless support for Packwiz manifests, allowing your launcher to read remote index files and fetch mods directly from web URLs, making custom server distribution and auto-updates effortless.
+%LOCALAPPDATA%\MCLauncher\instances\<instance name>\minecraft\logs\latest.log
+Built with
 
-🛠️ Tech Stack & Architecture
-Core: Developed using modern, robust technologies for reliable execution.
+Python and CustomTkinter.
 
-Mod Integration: Integrated parsers for handling dependency trees, mod metadata, and asset downloading.
+<img width="897" height="704" alt="image" src="https://github.com/user-attachments/assets/0684f7a3-4b0c-4371-be24-94a016d3af02" />
