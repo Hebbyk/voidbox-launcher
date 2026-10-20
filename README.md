@@ -39,4 +39,3 @@ Ask in `#help` on [Discord](https://discord.gg/xH3Rg4vKNb) or open an [Issue](ht
 Python and CustomTkinter.
 
 
-<img width="894" height="704" alt="image" src="https://github.com/user-attachments/assets/68074a16-2e2d-4c18-87ea-28d9e76f66fc" />
