@@ -38,5 +38,4 @@
 
 Python и CustomTkinter.
 
-<img width="894" height="704" alt="image" src="https://github.com/user-attachments/assets/daf4bc31-47a9-4ad7-a4f6-a2db47eb77b7" />
 
