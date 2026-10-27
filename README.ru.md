@@ -38,4 +38,4 @@
 
 Python и CustomTkinter.
 
-
+<!-- Добавьте сюда скриншот: ![Voidbox Launcher](docs/screenshot.png) -->

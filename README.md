@@ -38,4 +38,4 @@ Ask in `#help` on [Discord](https://discord.gg/xH3Rg4vKNb) or open an [Issue](ht
 
 Python and CustomTkinter.
 
-
+<!-- Add a screenshot here: ![Voidbox Launcher](docs/screenshot.png) -->
