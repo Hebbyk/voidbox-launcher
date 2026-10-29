@@ -1,0 +1,5 @@
+customtkinter
+pillow
+keyring
+pywebview
+tomli; python_version < "3.11"
