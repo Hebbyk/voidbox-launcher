@@ -5,7 +5,7 @@ param([string]$Version = "")
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-foreach ($f in "gui.py", "core.py", "icon.ico", "theme_violet_nebula.json", "version.py", "i18n.py", "lang_ru.py", "voidbox.spec", "voidbox.wxs", "license_guard.py", "LICENSE", "NOTICE") {
+foreach ($f in "gui.py", "core.py", "icon.ico", "theme_violet_nebula.json", "version.py", "i18n.py", "lang_ru.py", "voidbox.spec", "voidbox.wxs", "LICENSE", "NOTICE") {
     if (-not (Test-Path $f)) { throw "Missing $f in $PSScriptRoot" }
 }
 

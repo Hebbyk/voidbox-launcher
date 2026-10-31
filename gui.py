@@ -9,14 +9,14 @@ window. The one deliberate exception is the Microsoft login flow, which
 needs pywebview's own native window and can't be embedded here.
 """
 
-# --- Voidbox guard (managed by patch_entry.py) ---
-from license_guard import check_license
-check_license()
+# --- build metadata ---
 try:
     from _canary import BUILD_TAG
 except ImportError:
     BUILD_TAG = None
-# --- end Voidbox guard ---
+# --- end build metadata ---
+
+
 
 import io
 import json

@@ -20,8 +20,8 @@ if os.path.exists(os.path.join(HERE, "_cfk.py")):
 else:
     print("[spec] NOTE: no _cfk.py - this build has NO built-in CurseForge key (run make_key.py first)")
 
-# License tripwire + build tag (see license_guard.py / canary.py)
-for _m in ("license_guard", "_canary"):
+# Optional per-build tag module
+for _m in ("_canary",):
     if os.path.exists(os.path.join(HERE, _m + ".py")):
         hiddenimports += [_m]
 

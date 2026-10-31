@@ -67,7 +67,7 @@
       <File Id="MainExeFile" Source="dist\VoidboxLauncher\Voidbox Launcher.exe" KeyPath="yes" />
     </Component>
 
-    <!-- GPL license + copyright notice, installed next to the exe. license_guard.py refuses to start without them. -->
+    <!-- GPL license + copyright notice, installed next to the exe. -->
     <Component Id="LicenseFile" Directory="INSTALLFOLDER" Guid="*">
       <File Id="LicenseFileF" Source="LICENSE" KeyPath="yes" />
     </Component>

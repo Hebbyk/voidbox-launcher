@@ -7,14 +7,14 @@ offline auth, and building+running the java launch command for VANILLA MC.
 Modloaders and pack import build on top of this (loaders.py, packimport.py).
 """
 
-# --- Voidbox guard (managed by patch_entry.py) ---
-from license_guard import check_license
-check_license()
+# --- build metadata ---
 try:
     from _canary import BUILD_TAG
 except ImportError:
     BUILD_TAG = None
-# --- end Voidbox guard ---
+# --- end build metadata ---
+
+
 
 import hashlib
 import json
