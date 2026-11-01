@@ -20,7 +20,7 @@ Windows only for now.
 - **Handles Java for you**: picks the Java version each Minecraft version needs and downloads it if it's missing.
 
 **Looking after an instance**
-- **Mod health check**: finds duplicate mods by reading each jar's real ID and version, moves the older copy to a `disabled_mods` folder (nothing is deleted), and warns when a mod needs a newer NeoForge than the instance has.
+- **Mod health check**: finds duplicate mods by reading each jar's real ID and version, deletes the older copy, and warns when a mod needs a newer NeoForge than the instance has.
 - **Mod updater**: identifies every mod by its file hash on Modrinth (and CurseForge, with an API key), updates only the ones you tick, and keeps the old file so **Undo** can put it back. Betas are never pre-selected.
 - **Change version**: moves an instance to another Minecraft version in place, with a rollback snapshot and an optional backup of your worlds. It works best for packs made of ordinary mods; a pack built around its own custom mods usually can't move until its author ports it.
 - **Switch mods on and off** without deleting them.
@@ -66,6 +66,12 @@ py gui.py
 The MSI ends up in `dist\`.
 
 **CurseForge key:** the source contains no API key. The launcher asks for one when you import a CurseForge pack (you can get a free key at [console.curseforge.com](https://console.curseforge.com)). To bake your own key into your build, run `py make_key.py` before building.
+
+## Copyright and license
+
+Copyright (c) 2026 Hebby. Licensed under the [GNU GPL v3](LICENSE).
+
+**This is not a joke.** If you copy, repackage or rebrand Voidbox Launcher without following the license (keep the copyright notice and publish your complete source under GPLv3), I will enforce my rights to the full extent the law allows: DMCA takedowns, reports to every platform that hosts the copy, and legal action.
 
 ## Contributing
 

@@ -296,6 +296,12 @@ def launch(name: str, auth: dict, java_path: str | None = None, memory_mb: int =
     if not inst:
         raise InstanceError(f"No instance named '{name}'")
 
+    try:  # backup of any world that changed since its last backup; never blocks a launch
+        import world_backup
+        world_backup.backup_before_launch(inst.path)
+    except Exception as e:
+        print(f"[backup] skipped ({type(e).__name__}: {e})")
+
     if inst.loader == "vanilla":
         core.prepare_and_launch(inst.path, inst.minecraft_version, auth,
                                  memory_mb=memory_mb, java_path=java_path,

@@ -56,7 +56,9 @@ import export_packwiz
 import instances
 import mod_doctor
 import mod_updater
+import log_sanitizer
 import version_change
+import world_backup
 import worlds
 import msauth
 import packs
@@ -326,6 +328,10 @@ class CrashPanel(ctk.CTkFrame):
                                        fg_color=COLOR_BUTTON_SECONDARY,
                                        hover_color=COLOR_BUTTON_SECONDARY_HOVER)
         self._copy_btn.pack(side="left", padx=(0, 8))
+        self._share_btn = ctk.CTkButton(row, text=tr("Copy for sharing"), width=130, command=self._copy_safe,
+                                        fg_color=COLOR_BUTTON_SECONDARY,
+                                        hover_color=COLOR_BUTTON_SECONDARY_HOVER)
+        self._share_btn.pack(side="left", padx=(0, 8))
         ctk.CTkButton(row, text=tr("Open log folder"), width=140, command=on_open_folder,
                       fg_color=COLOR_BUTTON_SECONDARY,
                       hover_color=COLOR_BUTTON_SECONDARY_HOVER).pack(side="left")
@@ -336,6 +342,16 @@ class CrashPanel(ctk.CTkFrame):
         self.clipboard_append(text)
         self._copy_btn.configure(text=tr("Copied!"))
         self.after(1500, lambda: self._copy_btn.configure(text=tr("Copy log")))
+
+    def _copy_safe(self):
+        """Same log, with your Windows name, player name, account ids, tokens and server IPs hidden."""
+        app = self.winfo_toplevel()
+        names = [(getattr(app, "auth", None) or {}).get("username")]
+        text = log_sanitizer.sanitize("\n".join(self._info["tail"]) or tr("(no log was written)"), names)
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self._share_btn.configure(text=tr("Copied!"))
+        self.after(1500, lambda: self._share_btn.configure(text=tr("Copy for sharing")))
 
 
 class LauncherApp(ctk.CTk):
@@ -1429,6 +1445,7 @@ class ManageInstanceDialog(ModalDialog):
             grid.grid_columnconfigure(c, weight=1, uniform="b")
         buttons = [(tr("Add Mods..."), self.do_add_mods, {}),                       # the one accent: the main action here
                    (tr("Import World..."), self.do_import_world, quiet),
+                   (tr("World backups..."), self.do_world_backups, quiet),
                    (tr("Check for updates"), self.do_check_updates, quiet),
                    (tr("Change version..."), self.do_change_version, quiet),
                    (tr("Duplicate..."), self.do_duplicate, quiet),
@@ -1464,16 +1481,17 @@ class ManageInstanceDialog(ModalDialog):
         items = [(f, True) for f in mods] + [(f, False) for f in off]
         self._build_rows(items, 0, self._rows_gen)
 
-    ROW_BATCH = 20
+    ROW_BATCH = 8
 
     def _build_rows(self, items, start, gen):
         if gen != self._rows_gen or getattr(self, "_closed", False):
             return
-        for filename, on in items[start:start + self.ROW_BATCH]:
+        batch = items[start:start + self.ROW_BATCH]
+        for filename, on in batch:
             self._add_mod_row(filename, on)
         last = getattr(self, "_last_report", None)
         if last is not None:
-            self._decorate_rows(last)
+            self._decorate_rows(last, only={f for f, on in batch if on})   # just the new rows, not all of them again
         if start + self.ROW_BATCH < len(items):
             self.after(5, lambda: self._build_rows(items, start + self.ROW_BATCH, gen))
 
@@ -1501,11 +1519,13 @@ class ManageInstanceDialog(ModalDialog):
         m = re.fullmatch(r"\[\s*([\w.\-+]+)\s*,\s*\)", rng.strip())      # "[21.1.262,)" -> "21.1.262+"
         return f"{m.group(1)}+" if m else rng
 
-    def _decorate_rows(self, report):
+    def _decorate_rows(self, report, only=None):
         """Adds the version and any problem chips to the rows once the background scan has finished."""
         old_names = {l.name for l, _w, _m in report.plan.moves}
         bad = {p.jar: p for p in report.problems}
         for j in report.scanned:
+            if only is not None and j.name not in only:
+                continue
             holder = self._rows.get((j.name, True))
             if holder is None or not holder.winfo_exists():
                 continue
@@ -1582,7 +1602,7 @@ class ManageInstanceDialog(ModalDialog):
         if plan.moves:
             shown = True
             card(tr("{0} mods have an old extra copy", len(plan.moves)),
-                 tr("Keeps the newest of each and moves the rest to the disabled_mods folder. Nothing is deleted."),
+                 tr("Keeps the newest of each and deletes the older copies."),
                  "#F5B85C", tr("Fix duplicates"), lambda: self.do_fix_duplicates(plan))
         if plan.manual:
             shown = True
@@ -1605,8 +1625,8 @@ class ManageInstanceDialog(ModalDialog):
                          anchor="w").pack(fill="x")
 
     def do_fix_duplicates(self, plan):
-        lines = [tr("Keep {0} - disable {1}", w.name, l.name) for l, w, _ in plan.moves[:10]]
-        text = tr("Move {0} old copies to the disabled_mods folder? Nothing is deleted.", len(plan.moves))
+        lines = [tr("Keep {0} - delete {1}", w.name, l.name) for l, w, _ in plan.moves[:10]]
+        text = tr("Delete {0} old copies? This can't be undone.", len(plan.moves))
         text += "\n\n" + "\n".join(lines)
         if len(plan.moves) > 10:
             text += "\n" + tr("...and {0} more", len(plan.moves) - 10)
@@ -1614,7 +1634,7 @@ class ManageInstanceDialog(ModalDialog):
             return
         moved, failed = mod_doctor.fix_duplicates(self.inst.path, plan)
         if failed:
-            messagebox.showerror(tr("Couldn't move some files"),
+            messagebox.showerror(tr("Couldn't delete some files"),
                                  tr("{0}\n\n(If Minecraft is running, close it and try again.)", "\n".join(failed)))
         self.refresh_mods()
         self.refresh_health()
@@ -1629,6 +1649,9 @@ class ManageInstanceDialog(ModalDialog):
 
     def do_import_world(self):
         WorldImportDialog(self.app, self.inst)
+
+    def do_world_backups(self):
+        WorldBackupsDialog(self.app, self.inst)
 
     def _reload_inst(self):
         self.inst = instances.get(self.inst.name) or self.inst
@@ -1811,6 +1834,111 @@ class WorldImportDialog(ModalDialog):
         self.progress.pack_forget()
         self.status.configure(text=tr("{0} worlds found - pick one to copy:", len(self.found)))
         messagebox.showerror(tr("Import failed"), str(e))
+
+
+class WorldBackupsDialog(ModalDialog):
+    """Automatic world backups (made when you press Play, once a world has changed) with one-click restore.
+    A restore never deletes anything: the current world is renamed and kept."""
+
+    def __init__(self, app: LauncherApp, inst: instances.Instance):
+        super().__init__(app, title=tr('World backups: {0}', inst.name), width=560, height=540)
+        self.inst = inst
+        self._busy = False
+        ctk.CTkLabel(self, text=tr("Backups are saved in the instance folder. Restoring keeps the current world "
+                                   "under a new name, nothing is deleted. Close Minecraft before restoring."),
+                     wraplength=520, justify="left", anchor="w",
+                     text_color=COLOR_TEXT_MUTED).pack(fill="x", padx=20, pady=(10, 0))
+        self.status = ctk.CTkLabel(self, text="", anchor="w", text_color=COLOR_TEXT_MUTED)
+        self.status.pack(fill="x", padx=20, pady=(6, 0))
+        self.list_frame = ctk.CTkScrollableFrame(self)
+        self.list_frame.pack(fill="both", expand=True, padx=20, pady=8)
+        bottom = ctk.CTkFrame(self, fg_color="transparent")
+        bottom.pack(fill="x", padx=20, pady=(0, 15), side="bottom")
+        self.now_btn = ctk.CTkButton(bottom, text=tr("Back up now"), command=self.do_backup_now)
+        self.now_btn.pack(side="left")
+        ctk.CTkButton(bottom, text=tr("Open backups folder"), command=self.do_open_folder,
+                      fg_color=COLOR_BUTTON_SECONDARY,
+                      hover_color=COLOR_BUTTON_SECONDARY_HOVER).pack(side="right")
+        self.refresh()
+
+    def refresh(self):
+        for w in self.list_frame.winfo_children():
+            w.destroy()
+        items = world_backup.list_backups(self.inst.path)
+        if not items:
+            ctk.CTkLabel(self.list_frame, wraplength=480, justify="left", text_color=COLOR_TEXT_MUTED,
+                         text=tr("No backups yet. One is made automatically when you press Play, "
+                                 "after a world has changed.")).pack(padx=8, pady=20)
+            return
+        for b in items:
+            row = ctk.CTkFrame(self.list_frame, fg_color="transparent")
+            row.pack(fill="x", pady=3)
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(b.when))
+            ctk.CTkLabel(row, text=f"{b.world}\n{when}  |  {b.size / 1e6:,.0f} MB", anchor="w",
+                         justify="left").pack(side="left", padx=(4, 0))
+            ctk.CTkButton(row, text=tr("Restore"), width=90, command=lambda b=b: self.do_restore(b),
+                          fg_color=COLOR_BUTTON_SECONDARY,
+                          hover_color=COLOR_BUTTON_SECONDARY_HOVER).pack(side="right")
+
+    def _ui(self, fn):
+        if not getattr(self, "_closed", False):
+            self.app.run_on_main_thread(fn)
+
+    def do_open_folder(self):
+        folder = world_backup.backups_dir(self.inst.path)
+        folder.mkdir(parents=True, exist_ok=True)
+        instances.open_folder(str(folder))
+
+    def do_backup_now(self):
+        if self._busy:
+            return
+        self._busy = True
+        self.now_btn.configure(state="disabled")
+        self.status.configure(text=tr("Backing up worlds..."))
+
+        def worker():
+            made, unchanged, errors = world_backup.backup_all(self.inst.path, force=True)
+
+            def done():
+                self._busy = False
+                self.now_btn.configure(state="normal")
+                if errors:
+                    messagebox.showerror(tr("Backup failed"), "\n".join(errors))
+                self.status.configure(text=tr("Backup done: {0} new, {1} unchanged.", len(made), unchanged))
+                self.refresh()
+            self._ui(done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def do_restore(self, b):
+        if self._busy:
+            return
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(b.when))
+        if not messagebox.askyesno(
+                tr("World backups"),
+                tr("Restore '{0}' from {1}?\n\nThe current version of this world is kept under a new name.",
+                   b.world, when)):
+            return
+        self._busy = True
+
+        def worker():
+            try:
+                dest, kept = world_backup.restore_backup(self.inst.path, b.path)
+                msg = (tr("Restored. The previous version was kept as '{0}'.", kept.name) if kept
+                       else tr("Restored."))
+                err = None
+            except Exception as e:
+                msg, err = None, str(e)
+
+            def done():
+                self._busy = False
+                if err:
+                    messagebox.showerror(tr("Restore failed"), err)
+                else:
+                    self.status.configure(text=msg)
+            self._ui(done)
+
+        threading.Thread(target=worker, daemon=True).start()
 
 
 class UpdatesDialog(ModalDialog):
@@ -2538,6 +2666,9 @@ class SettingsDialog(ModalDialog):
         self.lang_var = ctk.StringVar(value=i18n.LANGUAGES[i18n.current_language()])
         ctk.CTkOptionMenu(self, values=list(i18n.LANGUAGES.values()), variable=self.lang_var,
                           command=self.on_language).pack()
+        self.backup_var = ctk.BooleanVar(value=world_backup.is_enabled())
+        ctk.CTkSwitch(self, text=tr("Back up worlds before launching"), variable=self.backup_var,
+                      command=lambda: world_backup.set_enabled(self.backup_var.get())).pack(pady=(22, 0))
         self.note = ctk.CTkLabel(self, text="", wraplength=360, text_color=COLOR_TEXT_MUTED)
         self.restart_btn = ctk.CTkButton(self, text="", command=app.restart)
         ctk.CTkLabel(self, text=tr("Version {0}", APP_VERSION),

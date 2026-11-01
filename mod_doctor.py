@@ -5,8 +5,7 @@ not by guessing from file names:
   * duplicates  - two jars declaring the same mod id (e.g. an old and a new copy of the same mod)
   * requirements - a mod that needs a newer NeoForge than the instance has
 
-Fixing duplicates never deletes anything: the older copies move to <instance>\\disabled_mods\\ (a sibling of
-minecraft\\, so exports never pick them up) and can be restored with restore_all().
+Fixing duplicates deletes the older copy of each duplicated mod and keeps the newest one.
 """
 import io
 import json
@@ -191,20 +190,20 @@ def list_disabled(instance_path) -> list[str]:
 
 
 def fix_duplicates(instance_path, plan: DupPlan):
-    """Moves the older copies out of mods\\. Returns (moved names, failed names)."""
-    mods_dir, dest = Path(instance_path) / "minecraft" / "mods", disabled_dir(instance_path)
-    dest.mkdir(parents=True, exist_ok=True)
-    moved, failed = [], []
+    """Deletes the older copy of each duplicated mod from mods\\ (the newest copy stays).
+    Returns (deleted names, failed names)."""
+    mods_dir = Path(instance_path) / "minecraft" / "mods"
+    deleted, failed = [], []
     for loser, _winner, _mid in plan.moves:
-        src, target, n = mods_dir / loser.name, dest / loser.name, 2
-        while target.exists():
-            target = dest / f"{Path(loser.name).stem} ({n}).jar"; n += 1
+        if Path(loser.name).name != loser.name:      # only plain file names that sit directly in mods\\
+            failed.append(loser.name)
+            continue
         try:
-            shutil.move(str(src), str(target))
-            moved.append(loser.name)
+            (mods_dir / loser.name).unlink()
+            deleted.append(loser.name)
         except OSError:
             failed.append(loser.name)
-    return moved, failed
+    return deleted, failed
 
 
 def disable_mod(instance_path, filename: str) -> None:

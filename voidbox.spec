@@ -43,8 +43,13 @@ try:
 except Exception as e:
     print(f"[spec] WARNING: keyring metadata/backends not collected ({type(e).__name__})")
 
+# Never imported by the app (checked against the source). PyQt5 alone was 80 MB of the installer: pywebview's
+# collect_all pulls in its Qt backend whenever PyQt5 is installed. Pillow's AVIF codec (7.5 MB) is optional:
+# Pillow wraps that import in try/except, so excluding it only means .avif icons aren't shown.
+EXCLUDES = ["PyQt5", "PyQt6", "PySide2", "PySide6", "qtpy", "numpy", "PIL._avif"]
+
 a = Analysis([os.path.join(HERE, "gui.py")], pathex=[HERE],
-             datas=datas, binaries=binaries, hiddenimports=hiddenimports)
+             datas=datas, binaries=binaries, hiddenimports=hiddenimports, excludes=EXCLUDES)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Voidbox Launcher",
           console=False, icon=os.path.join(HERE, "icon.ico"))

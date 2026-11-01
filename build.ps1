@@ -5,7 +5,7 @@ param([string]$Version = "")
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-foreach ($f in "gui.py", "core.py", "icon.ico", "theme_violet_nebula.json", "version.py", "i18n.py", "lang_ru.py", "voidbox.spec", "voidbox.wxs", "LICENSE", "NOTICE") {
+foreach ($f in "gui.py", "core.py", "icon.ico", "theme_violet_nebula.json", "version.py", "i18n.py", "lang_ru.py", "voidbox.spec", "voidbox.wxs", "LICENSE", "NOTICE", "requirements.txt") {
     if (-not (Test-Path $f)) { throw "Missing $f in $PSScriptRoot" }
 }
 
@@ -36,9 +36,17 @@ if (Test-Path "dist\VoidboxLauncher") {
     try { Remove-Item "dist\VoidboxLauncher" -Recurse -Force -ErrorAction Stop }
     catch { throw "Can't clear dist\VoidboxLauncher - something is still using it. Close Voidbox Launcher and any Explorer window or terminal that is inside that folder, then run again." }
 }
-py -m pip install pyinstaller
-if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed" }
-py -m PyInstaller voidbox.spec --noconfirm --clean
+# Build in a clean virtual environment that holds ONLY requirements.txt + PyInstaller. Building from your everyday
+# Python used to drag huge unused packages (PyQt5, numpy, cryptography...) into the installer.
+if (-not (Test-Path ".venv-build\Scripts\python.exe")) {
+    Write-Host "Creating the clean build environment (.venv-build), first time only..."
+    py -m venv .venv-build
+    if ($LASTEXITCODE -ne 0) { throw "couldn't create .venv-build" }
+}
+$vpy = ".venv-build\Scripts\python.exe"
+& $vpy -m pip install -q --disable-pip-version-check -r requirements.txt pyinstaller
+if ($LASTEXITCODE -ne 0) { throw "pip install into .venv-build failed" }
+& $vpy -m PyInstaller voidbox.spec --noconfirm --clean
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 $appMb = [math]::Round((Get-ChildItem "dist\VoidboxLauncher" -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)
 Write-Host "App folder ready ($appMb MB): dist\VoidboxLauncher\Voidbox Launcher.exe  (test it before the MSI step)" -ForegroundColor Green

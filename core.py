@@ -19,6 +19,8 @@ except ImportError:
 import hashlib
 import json
 import os
+import random
+from concurrent.futures import ThreadPoolExecutor
 
 import java_finder
 import platform
@@ -80,6 +82,14 @@ def _file_matches(path: Path, expected_size: int | None, sha1: str | None,
     return True
 
 
+def _already_good(path: Path, expected_size, sha1, sha256) -> bool:
+    """Is this file already in place? Normally a size check only (fast launches).
+    Files are hash-verified when they are downloaded. VOIDBOX_VERIFY=1 re-hashes everything."""
+    if expected_size is not None and not os.environ.get("VOIDBOX_VERIFY"):
+        return path.stat().st_size == expected_size
+    return _file_matches(path, expected_size, sha1, sha256)
+
+
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) mc_launcher/0.1"
 
 
@@ -105,14 +115,14 @@ def _replace_with_retry(tmp: Path, dest: Path, expected_size, sha1, sha256,
             time.sleep(delay)
 
 
-def download_file(url: str, dest: Path, sha1: str | None = None,
+def _download_file_once(url: str, dest: Path, sha1: str | None = None,
                    expected_size: int | None = None, sha256: str | None = None,
                    on_progress=None):
     """on_progress(bytes_done, total_bytes) is optional; total_bytes is 0
     when the server sent no Content-Length."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists():
-        if _file_matches(dest, expected_size, sha1, sha256):
+        if _already_good(dest, expected_size, sha1, sha256):
             return
         print(f"[core] {dest.name} doesn't match expected size/hash (corrupt/incomplete "
               f"download or quarantined by antivirus) \u2014 re-downloading...")
@@ -122,7 +132,7 @@ def download_file(url: str, dest: Path, sha1: str | None = None,
     tmp = dest.with_name(f"{dest.name}.{uuid.uuid4().hex[:8]}.part")
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(req) as resp, open(tmp, "wb") as out:
+        with urllib.request.urlopen(req, timeout=30) as resp, open(tmp, "wb") as out:
             total = int(resp.headers.get("Content-Length") or 0)
             done = 0
             while True:
@@ -147,9 +157,25 @@ def download_file(url: str, dest: Path, sha1: str | None = None,
         raise
 
 
+def download_file(url, dest, sha1=None, expected_size=None, sha256=None, on_progress=None):
+    """_download_file_once with retries (3 tries, short backoff). 4xx errors other than 429 are not retried."""
+    last = None
+    for attempt in range(3):
+        try:
+            return _download_file_once(url, dest, sha1, expected_size, sha256, on_progress)
+        except (OSError, RuntimeError) as e:
+            last = e
+            code = getattr(e, "code", 0) or 0
+            if 400 <= code < 500 and code != 429:
+                raise
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1) + random.random())
+    raise last
+
+
 def fetch_json(url: str) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
 
 
@@ -157,8 +183,17 @@ def fetch_json(url: str) -> dict:
 # Version manifest / version info
 # ---------------------------------------------------------------------------
 
+_manifest_cache = (0.0, None)
+
+
 def get_version_manifest() -> dict:
-    return fetch_json(VERSION_MANIFEST_URL)
+    """Cached for 10 minutes so repeated lookups in one session don't re-download the whole list."""
+    global _manifest_cache
+    t, data = _manifest_cache
+    if data is None or time.time() - t > 600:
+        data = fetch_json(VERSION_MANIFEST_URL)
+        _manifest_cache = (time.time(), data)
+    return data
 
 
 def get_version_info(version_id: str) -> dict:
@@ -213,11 +248,39 @@ def maven_coord_to_path(coord: str) -> str:
     return f"{group.replace('.', '/')}/{artifact}/{version}/{filename}"
 
 
+def _prefetch_libraries(version_info: dict, libs_dir: Path, os_name: str):
+    """Download the plain library jars in parallel first; the loop in ensure_libraries then finds them in place.
+    Errors are ignored here on purpose: that loop downloads again and reports them properly."""
+    jobs = {}
+    for lib in version_info.get("libraries", []):
+        if not rules_allow(lib.get("rules")):
+            continue
+        downloads = lib.get("downloads", {})
+        art = downloads.get("artifact")
+        if art:
+            jobs[str(libs_dir / art["path"])] = (art["url"], libs_dir / art["path"], art.get("sha1"), art.get("size"))
+        key = (lib.get("natives") or {}).get(os_name)
+        if key:
+            c = downloads.get("classifiers", {}).get(key)
+            if c:
+                jobs[str(libs_dir / c["path"])] = (c["url"], libs_dir / c["path"], c.get("sha1"), c.get("size"))
+
+    def _get(j):
+        try:
+            download_file(j[0], j[1], j[2], j[3])
+        except Exception:
+            pass
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(_get, jobs.values()))
+
+
 def ensure_libraries(version_info: dict, libs_dir: Path, natives_dir: Path) -> list[str]:
     """Downloads required libraries + extracts natives. Returns classpath entries."""
     classpath = []
     os_name = get_os_name()
     natives_dir.mkdir(parents=True, exist_ok=True)
+    _prefetch_libraries(version_info, libs_dir, os_name)
 
     for lib in version_info.get("libraries", []):
         if not rules_allow(lib.get("rules")):
@@ -289,11 +352,18 @@ def ensure_assets(version_info: dict, assets_dir: Path) -> str:
 
     index = json.loads(index_path.read_text(encoding="utf-8"))
     objects_dir = assets_dir / "objects"
+    unique = {}
     for obj in index.get("objects", {}).values():
-        h = obj["hash"]
-        obj_path = objects_dir / h[:2] / h
-        url = f"https://resources.download.minecraft.net/{h[:2]}/{h}"
-        download_file(url, obj_path, h, obj.get("size"))
+        unique.setdefault(obj["hash"], obj.get("size"))
+
+    def _get(item):
+        h, size = item
+        download_file(f"https://resources.download.minecraft.net/{h[:2]}/{h}",
+                      objects_dir / h[:2] / h, h, size)
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        for _ in pool.map(_get, unique.items()):  # re-raises the first failure
+            pass
 
     return index_id
 
