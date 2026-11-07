@@ -220,6 +220,45 @@ def disable_mod(instance_path, filename: str) -> None:
     shutil.move(str(src), str(target))
 
 
+OFF_SUFFIX = ".disabled"
+
+
+def list_turned_off(instance_path) -> list[str]:
+    """Mods switched off in place (foo.jar -> foo.jar.disabled inside the mods folder)."""
+    d = Path(instance_path) / "minecraft" / "mods"
+    if not d.is_dir():
+        return []
+    return sorted((f.name for f in d.iterdir() if f.is_file() and f.name.lower().endswith(".jar" + OFF_SUFFIX)),
+                  key=str.lower)
+
+
+def turn_off(instance_path, filename: str) -> None:
+    """Switches a mod off IN PLACE: foo.jar -> foo.jar.disabled. The game and the loaders ignore the file, and it
+    stays in the mods folder so it can be switched straight back on."""
+    if Path(filename).name != filename or not filename.lower().endswith(".jar"):
+        raise OSError(f"Invalid mod filename: {filename}")
+    mods = Path(instance_path) / "minecraft" / "mods"
+    src, dst = mods / filename, mods / (filename + OFF_SUFFIX)
+    if not src.is_file():
+        raise OSError(f"'{filename}' isn't in the mods folder")
+    if dst.exists():
+        raise OSError(f"'{dst.name}' already exists - delete or switch on the old copy first")
+    src.rename(dst)
+
+
+def turn_on(instance_path, filename: str) -> None:
+    """Switches a mod back on: foo.jar.disabled -> foo.jar. Refuses if foo.jar is already there."""
+    if Path(filename).name != filename or not filename.lower().endswith(".jar" + OFF_SUFFIX):
+        raise OSError(f"Invalid mod filename: {filename}")
+    mods = Path(instance_path) / "minecraft" / "mods"
+    src, dst = mods / filename, mods / filename[: -len(OFF_SUFFIX)]
+    if not src.is_file():
+        raise OSError(f"'{filename}' isn't in the mods folder")
+    if dst.exists():
+        raise OSError(f"A mod named '{dst.name}' is already switched on")
+    src.rename(dst)
+
+
 def enable_mod(instance_path, filename: str) -> None:
     """Switches one mod back on. Refuses if a file with that name is already in mods."""
     if Path(filename).name != filename:
@@ -230,6 +269,24 @@ def enable_mod(instance_path, filename: str) -> None:
     if target.exists():
         raise OSError(f"A mod named '{filename}' is already switched on")
     shutil.move(str(src), str(target))
+
+
+def delete_all_disabled(instance_path):
+    """PERMANENTLY deletes every jar in disabled_mods (that includes mods switched off on purpose).
+    Returns (deleted names, failed names). Removes the folder afterwards if it is empty."""
+    d = disabled_dir(instance_path)
+    deleted, failed = [], []
+    for name in list_disabled(instance_path):
+        try:
+            (d / name).unlink()
+            deleted.append(name)
+        except OSError:
+            failed.append(name)
+    try:
+        d.rmdir()      # only works when nothing is left in it
+    except OSError:
+        pass
+    return deleted, failed
 
 
 def restore_all(instance_path):

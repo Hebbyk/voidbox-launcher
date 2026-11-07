@@ -1,5 +1,5 @@
 """
-mc_launcher.i18n — interface language: English (default) and Russian.
+mc_launcher.i18n — interface language: English (default), Russian and Ukrainian.
 
 tr("English text") returns the text in the current language. The English text IS
 the key, so anything without a translation simply shows in English — nothing can
@@ -20,7 +20,7 @@ import os
 import sys
 from pathlib import Path
 
-LANGUAGES = {"en": "English", "ru": "Русский"}
+LANGUAGES = {"en": "English", "ru": "Русский", "uk": "Українська"}
 DEFAULT_LANGUAGE = "en"
 REGISTRY_KEY = r"Software\Hebby\VoidboxLauncher"
 
@@ -69,6 +69,9 @@ def _dictionary(code: str) -> dict:
     if code == "ru":
         from lang_ru import RU
         return RU
+    if code == "uk":
+        from lang_uk import UK
+        return UK
     return {}
 
 

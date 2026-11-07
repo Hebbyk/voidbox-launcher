@@ -25,6 +25,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import cf_net
 from packs import ResolvedFile, ResolvedPack
 
 API_BASE = "https://api.curseforge.com/v1"
@@ -36,7 +37,7 @@ class CurseForgeError(Exception):
 
 
 def _api_request(path: str, api_key: str, payload: dict | None = None) -> dict:
-    url = f"{API_BASE}{path}"
+    url = f"{cf_net.base()}{path}"
     headers = {"x-api-key": api_key, "Accept": "application/json"}
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")

@@ -35,6 +35,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import cf_net
 import export_packwiz  # shares its DEFAULT_EXCLUDE_DIRS so fingerprinting and export agree
 import instances
 import packs
@@ -136,7 +137,7 @@ def _lookup_curseforge(fingerprints: list[int], api_key: str) -> dict[int, dict]
     CurseForge recognizes."""
     if not fingerprints:
         return {}
-    resp = _post_json(CURSEFORGE_FINGERPRINTS_URL, {"fingerprints": fingerprints},
+    resp = _post_json(cf_net.base() + "/fingerprints", {"fingerprints": fingerprints},
                        headers={"x-api-key": api_key})
     matches = {}
     for m in resp.get("data", {}).get("exactMatches", []):

@@ -25,6 +25,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import cf_net
 import core
 import mod_doctor
 import packs
@@ -219,7 +220,7 @@ def check(inst, cf_api_key: str | None = None, progress=None, target_mc: str | N
         say("Asking CurseForge...")
         try:
             fps = {p: cf_fingerprint(data[p]) for p in unknown}
-            resp = _http(f"{CURSEFORGE}/fingerprints", {"fingerprints": sorted(set(fps.values()))},
+            resp = _http(f"{cf_net.base()}/fingerprints", {"fingerprints": sorted(set(fps.values()))},
                          headers={"x-api-key": cf_api_key})
             matches = {m["file"]["fileFingerprint"]: m for m in (resp.get("data") or {}).get("exactMatches", [])
                        if (m.get("file") or {}).get("fileFingerprint") is not None}

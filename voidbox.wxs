@@ -10,7 +10,7 @@
     <MajorUpgrade AllowSameVersionUpgrades="yes"
                   DowngradeErrorMessage="A newer version of Voidbox Launcher is already installed." />
 
-    <!-- Interface language picked on the wizard's language page: "en" or "ru". Starts at the value a
+    <!-- Interface language picked on the wizard's language page: "en", "ru" or "uk". Starts at the value a
          previous install left in the registry (so upgrades keep it), else English. The launcher reads
          this registry value on first start; see i18n.py. -->
     <Property Id="APPLANGUAGE" Value="en">
@@ -112,10 +112,11 @@
         <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="373" Height="0" />
         <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="20" Transparent="yes" NoPrefix="yes" Text="Choose the language of the launcher. You can change it later in Settings." />
         <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Interface language" />
-        <Control Id="LanguageChoice" Type="RadioButtonGroup" X="20" Y="60" Width="330" Height="60" Property="APPLANGUAGE">
+        <Control Id="LanguageChoice" Type="RadioButtonGroup" X="20" Y="60" Width="330" Height="72" Property="APPLANGUAGE">
           <RadioButtonGroup Property="APPLANGUAGE">
             <RadioButton Value="en" X="0" Y="0" Width="295" Height="16" Text="English" />
             <RadioButton Value="ru" X="0" Y="24" Width="295" Height="16" Text="Russian" />
+            <RadioButton Value="uk" X="0" Y="48" Width="295" Height="16" Text="Ukrainian" />
           </RadioButtonGroup>
         </Control>
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />

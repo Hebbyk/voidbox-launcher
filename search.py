@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import cf_net
 import core
 
 MODRINTH_API = "https://api.modrinth.com/v2"
@@ -56,7 +57,7 @@ def search_modrinth(query: str, limit: int = 20) -> list[dict]:
 def search_curseforge(query: str, api_key: str, limit: int = 20) -> list[dict]:
     params = {"gameId": CURSEFORGE_GAME_ID, "classId": CURSEFORGE_MODPACK_CLASS_ID,
               "searchFilter": query, "pageSize": limit, "sortField": 2}
-    url = f"{CURSEFORGE_API}/mods/search?{urllib.parse.urlencode(params)}"
+    url = f"{cf_net.base()}/mods/search?{urllib.parse.urlencode(params)}"
     resp = _fetch_json(url, headers={"x-api-key": api_key, "Accept": "application/json"})
     return [{
         "source": "curseforge",
@@ -90,7 +91,7 @@ def search_curseforge_mods(query: str, api_key: str, limit: int = 20) -> list[di
     """Same shape as search_curseforge() but for individual mods."""
     params = {"gameId": CURSEFORGE_GAME_ID, "classId": CURSEFORGE_MOD_CLASS_ID,
               "searchFilter": query, "pageSize": limit, "sortField": 2}
-    url = f"{CURSEFORGE_API}/mods/search?{urllib.parse.urlencode(params)}"
+    url = f"{cf_net.base()}/mods/search?{urllib.parse.urlencode(params)}"
     resp = _fetch_json(url, headers={"x-api-key": api_key, "Accept": "application/json"})
     return [{
         "source": "curseforge",
@@ -154,7 +155,7 @@ def get_curseforge_files(mod_id: int, api_key: str, limit: int = 20) -> list[dic
     """CurseForge doesn't have a separate loader field on a file — its
     gameVersions list mixes MC versions, loader names, and tags like
     'Client'/'Server' together, so the loader has to be picked out of it."""
-    url = f"{CURSEFORGE_API}/mods/{mod_id}/files?pageSize={limit}"
+    url = f"{cf_net.base()}/mods/{mod_id}/files?pageSize={limit}"
     resp = _fetch_json(url, headers={"x-api-key": api_key, "Accept": "application/json"})
     out = []
     for f in resp.get("data", []):
@@ -187,7 +188,7 @@ def get_curseforge_mod(mod_id: int, api_key: str) -> dict:
     as raw HTML from a separate '/mods/{id}/description' endpoint, which
     isn't fetched here since this GUI has no HTML rendering engine to show
     it with; 'summary' below is the same short text search already returns."""
-    resp = _fetch_json(f"{CURSEFORGE_API}/mods/{mod_id}",
+    resp = _fetch_json(f"{cf_net.base()}/mods/{mod_id}",
                         headers={"x-api-key": api_key, "Accept": "application/json"})
     return resp.get("data", {})
 

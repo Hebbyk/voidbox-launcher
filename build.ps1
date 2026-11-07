@@ -5,12 +5,16 @@ param([string]$Version = "")
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-foreach ($f in "gui.py", "core.py", "icon.ico", "theme_violet_nebula.json", "version.py", "i18n.py", "lang_ru.py", "voidbox.spec", "voidbox.wxs", "LICENSE", "NOTICE", "requirements.txt") {
+foreach ($f in "gui.py", "core.py", "icon.ico", "theme_violet_nebula.json", "version.py", "i18n.py", "lang_ru.py", "lang_uk.py", "voidbox.spec", "cf_net.py", "crash_suspect.py", "voidbox.wxs", "LICENSE", "NOTICE", "requirements.txt") {
     if (-not (Test-Path $f)) { throw "Missing $f in $PSScriptRoot" }
 }
 
 if (-not (Test-Path "_cfk.py")) {
     Write-Host "NOTE: _cfk.py not found - this build will have no built-in CurseForge key (run: py make_key.py)" -ForegroundColor Yellow
+}
+
+if (-not (Test-Path "_relay.py")) {
+    Write-Host "NOTE: _relay.py not found - this build will talk to CurseForge directly (put the relay address in _relay.py)" -ForegroundColor Yellow
 }
 
 # One version number for everything: version.py is shown in the app, drives the update check,

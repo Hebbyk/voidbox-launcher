@@ -36,12 +36,31 @@ def _builtin_curseforge_key() -> str | None:
 
 def get_curseforge_api_key() -> str | None:
     # A key the user pasted themselves always wins; otherwise fall back to the built-in one.
-    return _get("curseforge_api_key") or _builtin_curseforge_key()
+    own = _get("curseforge_api_key")
+    if own:
+        return own
+    import cf_net
+    if cf_net.relay_url():
+        return cf_net.RELAY_KEY   # the relay adds the real key; nothing secret ships in the app
+    return _builtin_curseforge_key()
 
 
 def save_curseforge_api_key(key: str):
     if key:
         _set("curseforge_api_key", key)
+
+
+def has_own_curseforge_key() -> bool:
+    """True when the person pasted their own key (as opposed to the built-in one)."""
+    return bool(_get("curseforge_api_key"))
+
+
+def clear_curseforge_api_key():
+    try:
+        import keyring
+        keyring.delete_password(SERVICE, "curseforge_api_key")
+    except Exception:
+        pass
 
 
 def get_elyby_session() -> dict | None:
@@ -64,3 +83,17 @@ def get_last_login_method() -> str | None:
 
 def save_last_login_method(method: str):
     _set("last_login_method", method)
+
+
+def _delete(key: str):
+    try:
+        import keyring
+        keyring.delete_password(SERVICE, key)
+    except Exception:
+        pass
+
+
+def clear_login():
+    """Log out: forget the saved ely.by session and which login method was used last."""
+    _delete("elyby_session")
+    _delete("last_login_method")

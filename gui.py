@@ -220,9 +220,10 @@ def popup_menu(anchor_widget, items):
 class AccountCard(ctk.CTkFrame):
     """Who is signed in, and one place (the arrow) to sign in or switch - instead of two always-on login buttons."""
 
-    def __init__(self, master, on_microsoft, on_elyby):
+    def __init__(self, master, on_microsoft, on_elyby, on_logout=None):
         super().__init__(master, fg_color=COLOR_SECONDARY, corner_radius=12)
-        self._on_microsoft, self._on_elyby = on_microsoft, on_elyby
+        self._on_microsoft, self._on_elyby, self._on_logout = on_microsoft, on_elyby, on_logout
+        self._signed_in = False
         self.avatar = ctk.CTkLabel(self, text="?", width=36, height=36, corner_radius=18,
                                    fg_color=COLOR_BUTTON_SECONDARY, font=ctk.CTkFont(weight="bold"))
         self.avatar.pack(side="left", padx=(10, 8), pady=10)
@@ -244,10 +245,21 @@ class AccountCard(ctk.CTkFrame):
         self.avatar.configure(text=(username[:1] or "?").upper(), fg_color=COLOR_ACCENT, text_color="#120F1D")
         self.name.configure(text=username)
         self.sub.configure(text="Microsoft" if kind == "premium" else "ely.by")
+        self._signed_in = True
+
+    def clear_account(self):
+        """Back to the "Not logged in" look."""
+        self.avatar.configure(text="?", fg_color=COLOR_BUTTON_SECONDARY, text_color=("gray10", "gray90"))
+        self.name.configure(text=tr("Not logged in"))
+        self.sub.configure(text=tr("Choose how to sign in"))
+        self._signed_in = False
 
     def open_menu(self):
-        return popup_menu(self.arrow, [(tr("Login (Microsoft)"), self._on_microsoft),
-                                       (tr("Login (ely.by)"), self._on_elyby)])
+        items = [(tr("Login (Microsoft)"), self._on_microsoft),
+                 (tr("Login (ely.by)"), self._on_elyby)]
+        if self._signed_in and self._on_logout:
+            items.append((tr("Log out"), self._on_logout))
+        return popup_menu(self.arrow, items)
 
 
 class ConsoleRedirector:
@@ -306,6 +318,17 @@ class CrashPanel(ctk.CTkFrame):
                       hover_color=COLOR_SECONDARY_HOVER, command=on_dismiss).pack(side="right")
         ctk.CTkLabel(self, text=tr("It ran for {0} seconds.", info["seconds"]), anchor="w",
                      text_color=COLOR_TEXT_MUTED).pack(fill="x", padx=14)
+        self._suspect = info.get("suspect")
+        if self._suspect:
+            srow = ctk.CTkFrame(self, fg_color="transparent")
+            srow.pack(fill="x", padx=14, pady=(6, 0))
+            self._sus_btn = ctk.CTkButton(srow, text=tr("Disable this mod"), width=150, command=self._disable_suspect,
+                                          fg_color=COLOR_BUTTON_SECONDARY,
+                                          hover_color=COLOR_BUTTON_SECONDARY_HOVER)
+            self._sus_btn.pack(side="right")
+            self._sus_label = ctk.CTkLabel(srow, text=tr("Suspected mod: {0}", self._suspect["name"]), anchor="w",
+                                           justify="left", wraplength=300, font=ctk.CTkFont(weight="bold"))
+            self._sus_label.pack(side="left", fill="x", expand=True)
 
         box = ctk.CTkTextbox(self, height=96, font=("Consolas", 11), wrap="word")
         box.pack(fill="x", padx=14, pady=8)
@@ -335,6 +358,16 @@ class CrashPanel(ctk.CTkFrame):
         ctk.CTkButton(row, text=tr("Open log folder"), width=140, command=on_open_folder,
                       fg_color=COLOR_BUTTON_SECONDARY,
                       hover_color=COLOR_BUTTON_SECONDARY_HOVER).pack(side="left")
+
+    def _disable_suspect(self):
+        sus = self._suspect
+        try:
+            mod_doctor.turn_off(Path(self._info["mc_dir"]).parent, sus["filename"])
+        except OSError as e:
+            self._sus_label.configure(text=tr("Couldn't disable it: {0}", e))
+            return
+        self._sus_btn.configure(state="disabled", text=tr("Disabled"))
+        self._sus_label.configure(text=tr("{0} is switched off. Press Play to try again; you can switch it back on in Manage.", sus["name"]))
 
     def _copy(self):
         text = "\n".join(self._info["tail"]) or tr("(no log was written)")
@@ -532,7 +565,7 @@ class LauncherApp(ctk.CTk):
 
         ctk.CTkLabel(sidebar, text="Voidbox", anchor="w", font=ctk.CTkFont(size=18, weight="bold")).pack(
             fill="x", padx=20, pady=(18, 10))
-        self.account_card = AccountCard(sidebar, self.login_premium, self.login_cracked)
+        self.account_card = AccountCard(sidebar, self.login_premium, self.login_cracked, self.logout)
         self.account_card.pack(fill="x", padx=14, pady=(0, 10))
 
         ctk.CTkLabel(sidebar, text="").pack(pady=10)  # spacer
@@ -866,6 +899,18 @@ class LauncherApp(ctk.CTk):
                 self.run_on_main_thread(self._stop_progress)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def logout(self):
+        """Forget the saved Microsoft / ely.by sign-in and go back to 'Not logged in'."""
+        who = (self.auth or {}).get("username", "")
+        if not messagebox.askyesno(tr("Log out"),
+                                   tr("Log out of {0}? You'll have to sign in again to play.", who)):
+            return
+        msauth.clear_session()
+        settings.clear_login()
+        self.auth = None
+        self.extra_jvm_args = None
+        self.account_card.clear_account()
 
     # -----------------------------------------------------------------
     # Search / Browse
@@ -1400,6 +1445,171 @@ class InstallPackDialog(ModalDialog):
         threading.Thread(target=worker, daemon=True).start()
 
 
+# customtkinter's global mouse-wheel handler assumes event.widget is always a widget; when Tk hands it the
+# widget's name as text it crashes with "'str' object has no attribute 'master'". Turn the name back into a widget
+# (or ignore the event) instead.
+_ctk_check_canvas = ctk.CTkScrollableFrame.check_if_master_is_canvas
+
+
+def _safe_check_if_master_is_canvas(self, widget):
+    if isinstance(widget, str):
+        try:
+            widget = self.nametowidget(widget)
+        except Exception:
+            return False
+    return _ctk_check_canvas(self, widget)
+
+
+ctk.CTkScrollableFrame.check_if_master_is_canvas = _safe_check_if_master_is_canvas
+
+
+class VirtualModList(ctk.CTkFrame):
+    """A mod list that only builds the rows you can see. A normal scrolling frame builds (and keeps redrawing)
+    thousands of widgets for a big modpack; this one keeps about 20 rows and re-uses them as you scroll."""
+    ROW_H = 30
+
+    def __init__(self, master, on_toggle, on_remove):
+        super().__init__(master)
+        self._on_toggle, self._on_remove = on_toggle, on_remove
+        self.items = []          # ("head", text) | ("mod", filename, is_on)
+        self.info = {}           # filename -> {"version": str, "chips": [(text, tone), ...]}
+        self.message = ""
+        self._ver = 0
+        self._pool = []
+        self._label_color = ctk.ThemeManager.theme["CTkLabel"]["text_color"]
+        bg = self._apply_appearance_mode(self._fg_color)
+        self.canvas = tk.Canvas(self, highlightthickness=0, bd=0, bg=bg, yscrollincrement=self.ROW_H)
+        self.bar = ctk.CTkScrollbar(self, command=self._yview)
+        self.canvas.configure(yscrollcommand=self.bar.set)
+        self.bar.pack(side="right", fill="y", padx=(0, 2), pady=4)
+        self.canvas.pack(side="left", fill="both", expand=True, padx=(6, 0), pady=4)
+        self.canvas.bind("<Configure>", lambda e: self._layout())
+        self._bind_wheel(self.canvas)
+
+    # ---- public ----
+    def set_items(self, items, message=""):
+        self.items, self.message = items, message
+        self._layout()
+
+    def set_info(self, info):
+        self.info = info
+        self._ver += 1
+        self._layout()
+
+    # ---- scrolling ----
+    def _bind_wheel(self, w):
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            try:
+                w.bind(seq, self._wheel, add="+")
+            except Exception:
+                pass
+        for c in w.winfo_children():
+            self._bind_wheel(c)
+
+    def _wheel(self, e):
+        num = getattr(e, "num", 0)
+        if num == 4:
+            step = -3
+        elif num == 5:
+            step = 3
+        else:
+            d = getattr(e, "delta", 0)
+            step = -3 if d > 0 else (3 if d < 0 else 0)
+        if step and len(self.items) * self.ROW_H > self.canvas.winfo_height():
+            self.canvas.yview_scroll(step, "units")
+            self._layout()
+
+    def _yview(self, *args):
+        self.canvas.yview(*args)
+        self._layout()
+
+    # ---- rows ----
+    def _make_slot(self):
+        row = ctk.CTkFrame(self.canvas, fg_color="transparent", height=self.ROW_H)
+        head = ctk.CTkLabel(row, text="", anchor="w", font=ctk.CTkFont(weight="bold"))
+        body = ctk.CTkFrame(row, fg_color="transparent")
+        slot = {"row": row, "head": head, "body": body, "key": None, "item": None}
+        slot["btn"] = ctk.CTkButton(body, text="\u2715", width=28, height=26, fg_color="transparent",
+                                    text_color=COLOR_TEXT_MUTED, hover_color=COLOR_DESTRUCTIVE,
+                                    command=lambda s=slot: self._remove(s))
+        slot["btn"].pack(side="right", padx=(2, 0))
+        slot["hold"] = ctk.CTkFrame(body, fg_color="transparent")
+        slot["hold"].pack(side="right")
+        slot["chips"] = [make_chip(slot["hold"], "", CHIP_AMBER), make_chip(slot["hold"], "", CHIP_RED)]
+        slot["ver"] = ctk.CTkLabel(slot["hold"], text="", text_color=COLOR_TEXT_MUTED, font=ctk.CTkFont(size=11))
+        slot["sw"] = ctk.CTkSwitch(body, text="", width=44, switch_width=34, switch_height=16)
+        slot["sw"].pack(side="left")
+        slot["lbl"] = ctk.CTkLabel(body, text="", anchor="w")
+        slot["lbl"].pack(side="left", fill="x", expand=True)
+        slot["win"] = self.canvas.create_window(0, 0, anchor="nw", window=row, height=self.ROW_H, state="hidden")
+        self._bind_wheel(row)
+        return slot
+
+    def _toggle(self, slot):
+        if slot["item"]:
+            self._on_toggle(slot["item"][0], bool(slot["sw"].get()))
+
+    def _remove(self, slot):
+        if slot["item"]:
+            self._on_remove(slot["item"][0], slot["item"][1])
+
+    def _bind_slot(self, slot, item):
+        if item[0] == "head":
+            slot["item"] = None
+            slot["body"].pack_forget()
+            slot["head"].configure(text=item[1])
+            slot["head"].pack(fill="x", padx=(6, 0))
+            return
+        _, filename, on = item
+        slot["item"] = (filename, on)
+        slot["head"].pack_forget()
+        slot["body"].pack(fill="both", expand=True)
+        low = filename.lower()
+        stem = filename[:-13] if low.endswith(".jar.disabled") else (filename[:-4] if low.endswith(".jar") else filename)
+        slot["lbl"].configure(text=stem, text_color=self._label_color if on else COLOR_TEXT_MUTED)
+        sw = slot["sw"]
+        sw.configure(command=None)                # select()/deselect() would otherwise fire the toggle
+        sw.select() if on else sw.deselect()
+        sw.configure(command=lambda s=slot: self._toggle(s))
+        for w in (*slot["chips"], slot["ver"]):
+            w.pack_forget()          # hide, never destroy: a destroyed widget can still be named by a queued wheel event
+        inf = self.info.get(filename) if on else None
+        if inf:
+            for chip, (text, tone) in zip(slot["chips"], inf["chips"]):
+                chip.configure(text=f"  {text}  ", fg_color=tone[0], text_color=tone[1])
+                chip.pack(side="left", padx=(0, 6))
+            if inf["version"]:
+                slot["ver"].configure(text=inf["version"])
+                slot["ver"].pack(side="left", padx=(0, 4))
+
+    def _layout(self):
+        h, w = max(self.canvas.winfo_height(), 1), max(self.canvas.winfo_width(), 1)
+        n = len(self.items)
+        self.canvas.configure(scrollregion=(0, 0, w, max(n * self.ROW_H, h)))
+        while len(self._pool) < h // self.ROW_H + 4:
+            self._pool.append(self._make_slot())
+        size = len(self._pool)
+        first = max(0, int(self.canvas.canvasy(0) // self.ROW_H))
+        used = set()
+        for i in range(first, min(n, first + size)):
+            slot = self._pool[i % size]
+            used.add(i % size)
+            item = self.items[i]
+            key = (item, self._ver if item[0] == "mod" else 0)
+            if slot["key"] != key:
+                self._bind_slot(slot, item)
+                slot["key"] = key
+            self.canvas.coords(slot["win"], 0, i * self.ROW_H)
+            self.canvas.itemconfigure(slot["win"], width=w, state="normal")
+        for k, slot in enumerate(self._pool):
+            if k not in used and slot["key"] is not None:
+                self.canvas.itemconfigure(slot["win"], state="hidden")
+                slot["key"] = None
+        self.canvas.delete("msg")
+        if not self.items and self.message:
+            self.canvas.create_text(w // 2, 40, text=self.message, fill=COLOR_TEXT_MUTED, tags="msg")
+
+
 class ManageInstanceDialog(ModalDialog):
     """Edit an existing instance: rename, open its folder, and remove
     individual mods. The mod list is read from the instance's mods/ folder
@@ -1460,59 +1670,25 @@ class ManageInstanceDialog(ModalDialog):
 
         self.mods_label = ctk.CTkLabel(self, text=tr("Mods"), anchor="w", font=ctk.CTkFont(weight="bold"))
         self.mods_label.pack(fill="x", padx=20, pady=(10, 0))
-        self.mods_frame = ctk.CTkScrollableFrame(self)
-        self.mods_frame.pack(fill="both", expand=True, padx=20, pady=(5, 15))
+        self.mod_list = VirtualModList(self, self.do_toggle_mod, self.do_remove_mod)
+        self.mod_list.pack(fill="both", expand=True, padx=20, pady=(5, 15))
         self.refresh_mods()
 
     def refresh_mods(self):
-        for w in self.mods_frame.winfo_children():
-            w.destroy()
-        self._rows = {}
         mods = instances.list_mods(self.inst.name)
-        off = mod_doctor.list_disabled(self.inst.path)
+        off = mod_doctor.list_turned_off(self.inst.path)
         title = tr('Mods ({0})', len(mods)) + (("   \u00b7   " + tr("{0} off", len(off))) if off else "")
         self.mods_label.configure(text=title)
-        if not mods and not off:
-            ctk.CTkLabel(self.mods_frame, text=tr("No mods in this instance."),
-                         text_color=COLOR_TEXT_MUTED).pack(pady=20)
-            return
-        # build the rows in small batches so the dialog opens at once, even with hundreds of mods
-        self._rows_gen = getattr(self, "_rows_gen", 0) + 1
-        items = [(f, True) for f in mods] + [(f, False) for f in off]
-        self._build_rows(items, 0, self._rows_gen)
-
-    ROW_BATCH = 8
-
-    def _build_rows(self, items, start, gen):
-        if gen != self._rows_gen or getattr(self, "_closed", False):
-            return
-        batch = items[start:start + self.ROW_BATCH]
-        for filename, on in batch:
-            self._add_mod_row(filename, on)
+        items = []
+        if off:
+            items.append(("head", tr("Turned off ({0})", len(off))))
+            items += [("mod", f, False) for f in off]
+            items.append(("head", tr("Mods ({0})", len(mods))))
+        items += [("mod", f, True) for f in mods]
+        self.mod_list.set_items(items, "" if items else tr("No mods in this instance."))
         last = getattr(self, "_last_report", None)
         if last is not None:
-            self._decorate_rows(last, only={f for f, on in batch if on})   # just the new rows, not all of them again
-        if start + self.ROW_BATCH < len(items):
-            self.after(5, lambda: self._build_rows(items, start + self.ROW_BATCH, gen))
-
-    def _add_mod_row(self, filename: str, on: bool):
-        row = ctk.CTkFrame(self.mods_frame, fg_color="transparent")
-        row.pack(fill="x", pady=1)
-        # right-hand pieces first (packing-order rule: a long name must never squeeze them out)
-        ctk.CTkButton(row, text="\u2715", width=28, height=26, fg_color="transparent", text_color=COLOR_TEXT_MUTED,
-                      hover_color=COLOR_DESTRUCTIVE,
-                      command=lambda f=filename, o=on: self.do_remove_mod(f, o)).pack(side="right", padx=(2, 0))
-        holder = ctk.CTkFrame(row, fg_color="transparent")
-        holder.pack(side="right")
-        sw = ctk.CTkSwitch(row, text="", width=44, switch_width=34, switch_height=16)
-        sw.configure(command=lambda f=filename, s=sw: self.do_toggle_mod(f, bool(s.get())))
-        if on:
-            sw.select()
-        sw.pack(side="left")
-        stem = filename[:-4] if filename.lower().endswith(".jar") else filename
-        ctk.CTkLabel(row, text=stem, anchor="w", text_color=None if on else COLOR_TEXT_MUTED).pack(
-            side="left", fill="x", expand=True)
-        self._rows[(filename, on)] = holder
+            self._decorate_rows(last)
 
     @staticmethod
     def _short_range(rng: str) -> str:
@@ -1520,32 +1696,25 @@ class ManageInstanceDialog(ModalDialog):
         return f"{m.group(1)}+" if m else rng
 
     def _decorate_rows(self, report, only=None):
-        """Adds the version and any problem chips to the rows once the background scan has finished."""
+        """Adds the version and any problem chips once the background scan has finished."""
         old_names = {l.name for l, _w, _m in report.plan.moves}
         bad = {p.jar: p for p in report.problems}
+        info = {}
         for j in report.scanned:
-            if only is not None and j.name not in only:
-                continue
-            holder = self._rows.get((j.name, True))
-            if holder is None or not holder.winfo_exists():
-                continue
-            for w in holder.winfo_children():
-                w.destroy()
+            chips = []
             if j.name in old_names:
-                make_chip(holder, tr("Older copy"), CHIP_AMBER).pack(side="left", padx=(0, 6))
+                chips.append((tr("Older copy"), CHIP_AMBER))
             if j.name in bad:
                 p = bad[j.name]
                 name = LauncherApp.LOADER_NAMES.get(p.target, p.target)
-                make_chip(holder, tr("Needs {0} {1}", name, self._short_range(p.wanted)), CHIP_RED).pack(
-                    side="left", padx=(0, 6))
+                chips.append((tr("Needs {0} {1}", name, self._short_range(p.wanted)), CHIP_RED))
             version = next(iter(j.mods.values()), "")
-            if version and version != "?":
-                ctk.CTkLabel(holder, text=str(version)[:22], text_color=COLOR_TEXT_MUTED,
-                             font=ctk.CTkFont(size=11)).pack(side="left", padx=(0, 4))
+            info[j.name] = {"chips": chips, "version": str(version)[:22] if version and version != "?" else ""}
+        self.mod_list.set_info(info)
 
     def do_toggle_mod(self, filename: str, want_on: bool):
         try:
-            (mod_doctor.enable_mod if want_on else mod_doctor.disable_mod)(self.inst.path, filename)
+            (mod_doctor.turn_on if want_on else mod_doctor.turn_off)(self.inst.path, filename)
         except OSError as e:
             messagebox.showerror(tr("Couldn't change the mod"),
                                  tr('{0}\n\n(If Minecraft is running, close it and try again.)', e))
@@ -1581,11 +1750,15 @@ class ManageInstanceDialog(ModalDialog):
         self._decorate_rows(report)
         bold = ctk.CTkFont(weight="bold")
 
-        def card(title, body, color, button_text=None, command=None):
+        def card(title, body, color, button_text=None, command=None, extra_text=None, extra_command=None):
             c = ctk.CTkFrame(self.health_frame, fg_color=COLOR_SECONDARY, corner_radius=10)
             c.pack(fill="x", pady=(0, 4))
             top = ctk.CTkFrame(c, fg_color="transparent")
             top.pack(fill="x", padx=12, pady=(8, 0))
+            if extra_text:
+                ctk.CTkButton(top, text=extra_text, width=100, command=extra_command, text_color="#FF8FAE",
+                              fg_color=COLOR_BUTTON_SECONDARY, hover_color=COLOR_BUTTON_SECONDARY_HOVER
+                              ).pack(side="right", padx=(8, 0))
             if button_text:
                 ctk.CTkButton(top, text=button_text, width=120, command=command, text_color=color,
                               fg_color=COLOR_BUTTON_SECONDARY, hover_color=COLOR_BUTTON_SECONDARY_HOVER
@@ -1619,7 +1792,8 @@ class ManageInstanceDialog(ModalDialog):
         if report.disabled:
             shown = True
             card(tr("{0} disabled mods", len(report.disabled)), None, COLOR_TEXT_MUTED,
-                 tr("Restore all"), self.do_restore_disabled)
+                 tr("Restore all"), self.do_restore_disabled,
+                 tr("Delete all"), self.do_delete_disabled)
         if not shown:
             ctk.CTkLabel(self.health_frame, text=tr("No problems found."), text_color=COLOR_TEXT_MUTED,
                          anchor="w").pack(fill="x")
@@ -1644,6 +1818,23 @@ class ManageInstanceDialog(ModalDialog):
         if skipped:
             messagebox.showinfo(tr("Restore all"), tr("Not restored (a mod with that name is already there):\n{0}",
                                                       "\n".join(skipped)))
+        self.refresh_mods()
+        self.refresh_health()
+
+    def do_delete_disabled(self):
+        names = mod_doctor.list_disabled(self.inst.path)
+        if not names:
+            return
+        text = tr("Permanently delete {0} switched-off mods? This includes mods you switched off yourself, and it can't be undone.", len(names))
+        text += "\n\n" + "\n".join(names[:10])
+        if len(names) > 10:
+            text += "\n" + tr("...and {0} more", len(names) - 10)
+        if not messagebox.askyesno(tr("Delete all"), text, icon="warning"):
+            return
+        deleted, failed = mod_doctor.delete_all_disabled(self.inst.path)
+        if failed:
+            messagebox.showerror(tr("Couldn't delete some files"),
+                                 tr("{0}\n\n(If Minecraft is running, close it and try again.)", "\n".join(failed)))
         self.refresh_mods()
         self.refresh_health()
 
@@ -1708,7 +1899,7 @@ class ManageInstanceDialog(ModalDialog):
             if enabled:
                 instances.remove_mod(self.inst.name, filename)
             else:
-                (mod_doctor.disabled_dir(self.inst.path) / filename).unlink()
+                (Path(self.inst.path) / "minecraft" / "mods" / filename).unlink()
         except Exception as e:
             messagebox.showerror(tr("Couldn't remove mod"),
                                  tr('{0}\n\n(If Minecraft is running, close it and try again.)', e))
@@ -2661,7 +2852,7 @@ class SettingsDialog(ModalDialog):
     takes effect after a restart (the whole window is built from translated text)."""
 
     def __init__(self, app: LauncherApp):
-        super().__init__(app, title=tr("Settings"), width=420, height=320)
+        super().__init__(app, title=tr("Settings"), width=420, height=480)
         ctk.CTkLabel(self, text=tr("Language:")).pack(pady=(25, 5))
         self.lang_var = ctk.StringVar(value=i18n.LANGUAGES[i18n.current_language()])
         ctk.CTkOptionMenu(self, values=list(i18n.LANGUAGES.values()), variable=self.lang_var,
@@ -2669,10 +2860,47 @@ class SettingsDialog(ModalDialog):
         self.backup_var = ctk.BooleanVar(value=world_backup.is_enabled())
         ctk.CTkSwitch(self, text=tr("Back up worlds before launching"), variable=self.backup_var,
                       command=lambda: world_backup.set_enabled(self.backup_var.get())).pack(pady=(22, 0))
+        ctk.CTkLabel(self, text=tr("CurseForge API key (optional):")).pack(pady=(26, 4))
+        key_row = ctk.CTkFrame(self, fg_color="transparent")
+        key_row.pack()
+        self.cf_entry = ctk.CTkEntry(key_row, width=230, show="\u2022")
+        self.cf_entry.pack(side="left", padx=(0, 6))
+        ctk.CTkButton(key_row, text=tr("Save"), width=64, command=self._cf_save).pack(side="left", padx=(0, 6))
+        self.cf_remove_btn = ctk.CTkButton(key_row, text=tr("Remove"), width=70, command=self._cf_remove,
+                                           fg_color=COLOR_BUTTON_SECONDARY,
+                                           hover_color=COLOR_BUTTON_SECONDARY_HOVER)
+        self.cf_status = ctk.CTkLabel(self, text="", wraplength=360, text_color=COLOR_TEXT_MUTED)
+        self.cf_status.pack(pady=(6, 0))
+        ctk.CTkLabel(self, text=tr("Leave it empty to use the built-in key. You can get a free key at console.curseforge.com."),
+                     wraplength=360, text_color=COLOR_TEXT_MUTED, font=ctk.CTkFont(size=11)).pack(pady=(2, 0))
+        self._cf_refresh()
         self.note = ctk.CTkLabel(self, text="", wraplength=360, text_color=COLOR_TEXT_MUTED)
         self.restart_btn = ctk.CTkButton(self, text="", command=app.restart)
         ctk.CTkLabel(self, text=tr("Version {0}", APP_VERSION),
                      text_color=COLOR_TEXT_MUTED).pack(side="bottom", pady=12)
+
+    def _cf_refresh(self, message: str = ""):
+        own = settings.has_own_curseforge_key()
+        if own:
+            self.cf_remove_btn.pack(side="left")
+        else:
+            self.cf_remove_btn.pack_forget()
+        self.cf_status.configure(text=message or (tr("Using your own key.") if own else tr("Using the built-in key.")))
+
+    def _cf_save(self):
+        key = self.cf_entry.get().strip()
+        if not key:
+            return
+        if len(key) < 20 or " " in key:
+            self._cf_refresh(tr("That doesn't look like a CurseForge key."))
+            return
+        settings.save_curseforge_api_key(key)
+        self.cf_entry.delete(0, "end")
+        self._cf_refresh(tr("Key saved."))
+
+    def _cf_remove(self):
+        settings.clear_curseforge_api_key()
+        self._cf_refresh(tr("Your key was removed."))
 
     def on_language(self, label: str):
         code = next(c for c, name in i18n.LANGUAGES.items() if name == label)

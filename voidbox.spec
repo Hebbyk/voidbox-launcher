@@ -20,13 +20,19 @@ if os.path.exists(os.path.join(HERE, "_cfk.py")):
 else:
     print("[spec] NOTE: no _cfk.py - this build has NO built-in CurseForge key (run make_key.py first)")
 
+# CurseForge relay address: _relay.py is private (never in git); cf_net.py imports it inside try/except.
+if os.path.exists(os.path.join(HERE, "_relay.py")):
+    hiddenimports += ["_relay"]
+else:
+    print("[spec] NOTE: no _relay.py - this build talks to CurseForge directly")
+
 # Optional per-build tag module
 for _m in ("_canary",):
     if os.path.exists(os.path.join(HERE, _m + ".py")):
         hiddenimports += [_m]
 
-# The Russian dictionary is loaded on demand by i18n.py (only when Russian is selected).
-hiddenimports += ["lang_ru"]
+# The Russian and Ukrainian dictionaries are loaded on demand by i18n.py (only when selected).
+hiddenimports += ["lang_ru", "lang_uk"]
 
 # customtkinter ships theme json + fonts that must travel with it.
 # webview/pythonnet/clr_loader: Microsoft login window. keyring: saved sessions

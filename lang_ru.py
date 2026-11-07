@@ -105,7 +105,7 @@ RU = {
     "Couldn't set icon": "Не удалось установить значок",
     "Rename": "Переименовать",
     "Rename failed": "Не удалось переименовать",
-    "Open Instance Folder": "Открыть папку экземпляра",
+    "Open Instance Folder": "Открыть папку",
     "Couldn't open folder": "Не удалось открыть папку",
     "Add Mods...": "Добавить моды...",
     "Mods": "Моды",
@@ -225,7 +225,7 @@ RU = {
         "«{0}» скопирован в {1}. Оригинал не тронут.",
 
     # --- mod updater
-    "Check for updates": "Проверить обновления",
+    "Check for updates": "Обновления модов",
     "Mod updates: {0}": "Обновления модов: {0}",
     "Reading mods...": "Чтение модов...",
     "Asking Modrinth...": "Запрос к Modrinth...",
@@ -321,7 +321,7 @@ RU = {
     "{0} off": "выкл.: {0}",
     "Couldn't change the mod": "Не удалось изменить мод",
     # --- world backups / sharing
-    'World backups...': 'Резервные копии миров...',
+    'World backups...': 'Копии миров...',
     'Back up worlds before launching': 'Копировать миры перед запуском',
     'World backups: {0}': 'Резервные копии миров: {0}',
     'World backups': 'Резервные копии миров',
@@ -342,4 +342,27 @@ RU = {
     'Keep {0} - delete {1}': 'Оставить {0} - удалить {1}',
     "Delete {0} old copies? This can't be undone.": 'Удалить старые копии ({0})? Это нельзя отменить.',
     "Couldn't delete some files": 'Не удалось удалить некоторые файлы',
+    # --- log out
+    'Log out': 'Выйти',
+    "Log out of {0}? You'll have to sign in again to play.": 'Выйти из аккаунта {0}? Чтобы играть, нужно будет войти снова.',
+    # --- settings: CurseForge key
+    'CurseForge API key (optional):': 'Ключ API CurseForge (необязательно):',
+    'Save': 'Сохранить',
+    'Using your own key.': 'Используется ваш ключ.',
+    'Using the built-in key.': 'Используется встроенный ключ.',
+    "That doesn't look like a CurseForge key.": 'Это не похоже на ключ CurseForge.',
+    'Key saved.': 'Ключ сохранён.',
+    'Your key was removed.': 'Ваш ключ удалён.',
+    'Leave it empty to use the built-in key. You can get a free key at console.curseforge.com.': 'Оставьте поле пустым, чтобы использовать встроенный ключ. Бесплатный ключ можно получить на console.curseforge.com.',
+    # --- delete leftovers in disabled_mods
+    'Delete all': 'Удалить все',
+    "Permanently delete {0} switched-off mods? This includes mods you switched off yourself, and it can't be undone.": 'Удалить навсегда выключенные моды ({0})? Среди них могут быть моды, которые вы отключили сами. Отменить это нельзя.',
+    # --- crash helper: suspected mod
+    'Suspected mod: {0}': 'Подозрительный мод: {0}',
+    'Disable this mod': 'Отключить этот мод',
+    'Disabled': 'Отключён',
+    "Couldn't disable it: {0}": 'Не удалось отключить: {0}',
+    '{0} is switched off. Press Play to try again; you can switch it back on in Manage.': '{0} выключен. Нажмите «Играть», чтобы попробовать снова; включить его обратно можно в «Управление».',
+    # --- mod list: turned-off section
+    'Turned off ({0})': 'Выключены ({0})',
 }

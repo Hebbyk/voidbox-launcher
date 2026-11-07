@@ -557,6 +557,12 @@ def _watch_game(proc, mc_dir: Path, version_id: str, started: float):
     }
     info["highlights"] = _key_lines(info["tail"])
     try:
+        import crash_suspect
+        info["suspect"] = crash_suspect.find_suspect(mc_dir, crash, info["tail"])
+    except Exception as e:      # a guess is never worth breaking the crash panel for
+        print(f"[core] couldn't look for a suspect mod: {e}")
+        info["suspect"] = None
+    try:
         cb(info)
     except Exception as e:
         print(f"[core] crash callback failed: {e}")

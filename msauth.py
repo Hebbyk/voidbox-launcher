@@ -80,11 +80,14 @@ def _post_json(url: str, payload: dict) -> dict:
         "Content-Type": "application/json", "Accept": "application/json",
     }, method="POST")
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "ignore")
-        raise MSAuthError(body or f"HTTP {e.code}") from None
+        err = MSAuthError(body or f"HTTP {e.code}")
+        err.status = e.code                                   # lets callers tell a rate limit from a real refusal
+        err.retry_after = e.headers.get("Retry-After") if e.headers else None
+        raise err from None
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +182,34 @@ def xsts_authenticate(xbl_token: str) -> tuple[str, str]:
 # Steps 4-5: Minecraft services
 # ---------------------------------------------------------------------------
 
+_MC_HINTS = {
+    429: "Minecraft's servers say there were too many sign-in attempts. Wait 10-15 minutes, then try again "
+         "(every time the launcher starts it also counts as a sign-in).",
+    403: "Minecraft's servers refused the sign-in (HTTP 403). Turn off any VPN or proxy, then try again.",
+    401: "Minecraft's servers rejected the sign-in (HTTP 401). Log out and sign in again.",
+}
+
+
 def minecraft_login(user_hash: str, xsts_token: str) -> str:
-    resp = _post_json(MC_LOGIN_URL, {"identityToken": f"XBL3.0 x={user_hash};{xsts_token}"})
-    return resp["access_token"]
+    last = None
+    for attempt in range(3):
+        try:
+            resp = _post_json(MC_LOGIN_URL, {"identityToken": f"XBL3.0 x={user_hash};{xsts_token}"})
+            return resp["access_token"]
+        except MSAuthError as e:
+            last = e
+            if getattr(e, "status", None) == 429 and attempt < 2:      # rate limited: wait a little and try again
+                try:
+                    wait = min(int(getattr(e, "retry_after", None) or 0), 20)
+                except (TypeError, ValueError):
+                    wait = 0
+                time.sleep(wait or 4 * (attempt + 1))
+                continue
+            break
+    status = getattr(last, "status", None)
+    hint = _MC_HINTS.get(status)
+    detail = f"HTTP {status}: {last}" if status else str(last)
+    raise MSAuthError(f"{hint}\n\n({detail})" if hint else detail) from None
 
 
 def owns_minecraft(mc_access_token: str) -> bool:
@@ -412,6 +440,15 @@ def _save_refresh_token(refresh_token: str | None):
     except ImportError:
         print("[msauth] keyring isn't installed, so the session can't be saved — "
               "run: py -m pip install keyring")
+
+
+def clear_session():
+    """Log out: forget the saved Microsoft sign-in (the next login asks for the account again)."""
+    try:
+        import keyring
+        keyring.delete_password(KEYRING_SERVICE, KEYRING_USERNAME)
+    except Exception:
+        pass  # nothing was saved, keyring missing, or the vault is unavailable
 
 
 def get_auth() -> dict:
