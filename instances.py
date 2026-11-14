@@ -16,10 +16,12 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+import atomicio
 import core
 
 REGISTRY_FILENAME = "instances.json"
@@ -48,15 +50,33 @@ def load_all() -> dict[str, Instance]:
     path = _registry_path()
     if not path.exists():
         return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = None
+    for candidate in (path, path.with_name(path.name + ".bak")):
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            raw = data
+            if candidate is not path:
+                print("[instances] instances.json was unreadable - loaded the last good backup")
+            break
+    if raw is None:
+        # Unreadable and no usable backup: keep the broken file for manual recovery, start empty.
+        try:
+            path.replace(path.with_name(f"{path.name}.corrupt-{int(time.time())}"))
+        except OSError:
+            pass
+        print("[instances] instances.json was unreadable - set aside as instances.json.corrupt-*")
+        return {}
     return {name: Instance(**data) for name, data in raw.items()}
 
 
 def _save_all(registry: dict[str, Instance]):
     path = _registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({name: asdict(inst) for name, inst in registry.items()}, indent=2),
-                     encoding="utf-8")
+    atomicio.write_text(path, json.dumps({name: asdict(inst) for name, inst in registry.items()}, indent=2),
+                        backup=True)
 
 
 def list_instances() -> list[Instance]:

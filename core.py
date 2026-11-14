@@ -7,15 +7,6 @@ offline auth, and building+running the java launch command for VANILLA MC.
 Modloaders and pack import build on top of this (loaders.py, packimport.py).
 """
 
-# --- build metadata ---
-try:
-    from _canary import BUILD_TAG
-except ImportError:
-    BUILD_TAG = None
-# --- end build metadata ---
-
-
-
 import hashlib
 import json
 import os

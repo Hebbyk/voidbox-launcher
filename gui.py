@@ -9,15 +9,6 @@ window. The one deliberate exception is the Microsoft login flow, which
 needs pywebview's own native window and can't be embedded here.
 """
 
-# --- build metadata ---
-try:
-    from _canary import BUILD_TAG
-except ImportError:
-    BUILD_TAG = None
-# --- end build metadata ---
-
-
-
 import io
 import json
 import os
@@ -49,20 +40,11 @@ import customtkinter as ctk
 from PIL import Image, ImageDraw, ImageFont
 
 import core
-import elyby
-import export_curseforge
-import export_mrpack
-import export_packwiz
+import crashlog
 import instances
-import mod_doctor
-import mod_updater
 import log_sanitizer
-import version_change
-import world_backup
-import worlds
 import msauth
 import packs
-import search
 import settings
 from version import APP_VERSION
 import i18n
@@ -360,6 +342,7 @@ class CrashPanel(ctk.CTkFrame):
                       hover_color=COLOR_BUTTON_SECONDARY_HOVER).pack(side="left")
 
     def _disable_suspect(self):
+        import mod_doctor
         sus = self._suspect
         try:
             mod_doctor.turn_off(Path(self._info["mc_dir"]).parent, sus["filename"])
@@ -713,6 +696,7 @@ class LauncherApp(ctk.CTk):
             self.run_on_main_thread(lambda: self.account_card.set_account(auth['username'], 'premium'))
 
     def _silent_cracked_check(self):
+        import elyby
         session = settings.get_elyby_session()
         if not session:
             return
@@ -813,6 +797,7 @@ class LauncherApp(ctk.CTk):
     # ---- health badges: filled in by a background scan so the list itself appears instantly ----
 
     def _start_health_scan(self):
+        import mod_doctor
         self._health_gen += 1
         gen, targets, cache = self._health_gen, list(self._badge_targets), self._health_cache
 
@@ -865,6 +850,7 @@ class LauncherApp(ctk.CTk):
     # -----------------------------------------------------------------
 
     def login_cracked(self):
+        import elyby
         username = ctk.CTkInputDialog(text=tr("ely.by username:"), title=tr("Login (ely.by)")).get_input()
         if not username:
             return
@@ -916,31 +902,49 @@ class LauncherApp(ctk.CTk):
     # Search / Browse
     # -----------------------------------------------------------------
 
+    SEARCH_PAGE_SIZE = 10  # matches search.search_all()'s/search_all_mods()'s own default "limit"
+
     def do_search(self):
         query = self.search_entry.get().strip()
         if not query:
             return
-        api_key = settings.get_curseforge_api_key()
-        adding_to = self.add_target_instance
-
+        self._search_query = query
+        self._search_offset = 0
         for widget in self.results_frame.winfo_children():
             widget.destroy()
-        self._start_progress(tr("Searching for '{0}'...", query))
+        self._current_results = []
+        self._fetch_search_page(reset=True)
+
+    def _fetch_search_page(self, reset: bool):
+        """reset=True: a brand new search, replaces whatever was shown.
+        reset=False: the "Load more" button was pressed, appends the next page."""
+        import search
+        query, offset = self._search_query, self._search_offset
+        api_key = settings.get_curseforge_api_key()
+        adding_to = self.add_target_instance
+        if reset:
+            self._start_progress(tr("Searching for '{0}'...", query))
 
         def worker():
             try:
                 if adding_to:
-                    results = search.search_all_mods(query, curseforge_api_key=api_key)
+                    results = search.search_all_mods(query, curseforge_api_key=api_key, offset=offset)
                 else:
-                    results = search.search_all(query, curseforge_api_key=api_key)
-                self.run_on_main_thread(lambda: self._show_search_results(results))
+                    results = search.search_all(query, curseforge_api_key=api_key, offset=offset)
+                self.run_on_main_thread(lambda: self._show_search_results(results, reset))
             except Exception as e:
                 msg = str(e)
                 self.run_on_main_thread(lambda: messagebox.showerror(tr("Search failed"), msg))
             finally:
-                self.run_on_main_thread(self._stop_progress)
+                if reset:
+                    self.run_on_main_thread(self._stop_progress)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _do_load_more(self):
+        if getattr(self, "_load_more_btn", None) is not None and self._load_more_btn.winfo_exists():
+            self._load_more_btn.configure(text=tr("Loading..."), state="disabled")
+        self._fetch_search_page(reset=False)
 
     def enter_add_mode(self, inst: instances.Instance):
         """Switches Browse into 'add a mod to this instance' mode: search
@@ -960,15 +964,32 @@ class LauncherApp(ctk.CTk):
         self.add_mode_banner.pack_forget()
         self.search_entry.configure(placeholder_text=tr("Search modpacks..."))
 
-    def _show_search_results(self, results: list[dict]):
-        self._current_results = results
-        for widget in self.results_frame.winfo_children():
-            widget.destroy()
-        if not results:
-            ctk.CTkLabel(self.results_frame, text=tr("No results.")).pack(pady=20)
-            return
+    def _show_search_results(self, results: list[dict], reset: bool = True):
+        if reset:
+            for widget in self.results_frame.winfo_children():
+                widget.destroy()
+            self._load_more_btn = None
+            self._current_results = []
+            if not results:
+                ctk.CTkLabel(self.results_frame, text=tr("No results.")).pack(pady=20)
+                return
+        else:
+            if getattr(self, "_load_more_btn", None) is not None and self._load_more_btn.winfo_exists():
+                self._load_more_btn.destroy()
+            self._load_more_btn = None
+            if not results:
+                ctk.CTkLabel(self.results_frame, text=tr("No more results."),
+                              text_color=COLOR_TEXT_MUTED).pack(pady=10)
+                return
+        self._current_results += results
         for r in results:
             self._add_result_row(r)
+        self._search_offset += self.SEARCH_PAGE_SIZE
+        self._load_more_btn = ctk.CTkButton(self.results_frame, text=tr("Load more"),
+                                             command=self._do_load_more,
+                                             fg_color=COLOR_BUTTON_SECONDARY,
+                                             hover_color=COLOR_BUTTON_SECONDARY_HOVER)
+        self._load_more_btn.pack(pady=12)
 
     def _add_result_row(self, r: dict):
         row = ctk.CTkFrame(self.results_frame, cursor="hand2", fg_color=COLOR_SECONDARY)
@@ -1076,6 +1097,7 @@ class LauncherApp(ctk.CTk):
     # -----------------------------------------------------------------
 
     def show_pack_details(self, r: dict):
+        import search
         for widget in self.results_frame.winfo_children():
             widget.destroy()
         ctk.CTkButton(self.results_frame, text=tr("← Back to results"), width=140, fg_color=COLOR_BUTTON_SECONDARY, hover_color=COLOR_BUTTON_SECONDARY_HOVER,
@@ -1262,9 +1284,18 @@ class AddInstanceDialog(ModalDialog):
         self.name_entry = ctk.CTkEntry(self, width=300)
         self.name_entry.pack(pady=5)
 
-        ctk.CTkLabel(self, text=tr("Minecraft version (e.g. 1.20.1):")).pack(pady=(10, 0))
-        self.mc_entry = ctk.CTkEntry(self, width=300)
+        ctk.CTkLabel(self, text=tr("Minecraft version:")).pack(pady=(10, 0))
+        self.mc_entry = ctk.CTkComboBox(self, width=300, values=[tr("Loading versions...")], state="disabled")
         self.mc_entry.pack(pady=5)
+
+        def load_versions():
+            import version_change
+            try:
+                versions = version_change.release_versions()
+            except Exception:
+                versions = []
+            self.app.run_on_main_thread(lambda: self._versions_loaded(versions))
+        threading.Thread(target=load_versions, daemon=True).start()
 
         ctk.CTkLabel(self, text=tr("Loader:")).pack(pady=(10, 0))
         self.loader_var = ctk.StringVar(value="vanilla")
@@ -1274,6 +1305,17 @@ class AddInstanceDialog(ModalDialog):
         ctk.CTkButton(self, text=tr("Create Blank Instance"), command=self.create_blank).pack(pady=(15, 5))
         ctk.CTkButton(self, text=tr("Import from Pack File (.mrpack / .zip)"),
                       command=self.import_pack_file).pack(pady=5)
+
+    def _versions_loaded(self, versions):
+        if getattr(self, "_closed", False) or not self.mc_entry.winfo_exists():
+            return
+        if not versions:
+            # Couldn't reach Mojang - fall back to free typing rather than blocking creation.
+            self.mc_entry.configure(values=[], state="normal")
+            self.mc_entry.set("")
+            return
+        self.mc_entry.configure(values=versions, state="readonly")
+        self.mc_entry.set(versions[0])
 
     def create_blank(self):
         name, mc = self.name_entry.get().strip(), self.mc_entry.get().strip()
@@ -1376,6 +1418,7 @@ class InstallPackDialog(ModalDialog):
         return f"{v['name']} ({versions_part}){loader_part}"
 
     def _load_versions(self):
+        import search
         try:
             if self.result["source"] == "modrinth":
                 self.versions = search.get_modrinth_versions(self.result["id"])
@@ -1400,6 +1443,7 @@ class InstallPackDialog(ModalDialog):
             self.app.run_on_main_thread(self.close)
 
     def do_install(self):
+        import search
         name = self.name_entry.get().strip()
         if not name or not self.versions:
             messagebox.showwarning(tr("Missing info"), tr("Enter a name and wait for versions to load."))
@@ -1670,22 +1714,47 @@ class ManageInstanceDialog(ModalDialog):
 
         self.mods_label = ctk.CTkLabel(self, text=tr("Mods"), anchor="w", font=ctk.CTkFont(weight="bold"))
         self.mods_label.pack(fill="x", padx=20, pady=(10, 0))
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda *_: self._apply_filter())
+        search_row = ctk.CTkFrame(self, fg_color="transparent")
+        search_row.pack(fill="x", padx=20, pady=(6, 0))
+        self.search_entry = ctk.CTkEntry(search_row, textvariable=self.search_var,
+                                          placeholder_text=tr("Search mods..."))
+        self.search_entry.pack(side="left", fill="x", expand=True)
+        self.clear_search_btn = ctk.CTkButton(search_row, text="\u2715", width=28,
+                                               fg_color="transparent", text_color=COLOR_TEXT_MUTED,
+                                               hover_color=COLOR_BUTTON_SECONDARY_HOVER,
+                                               command=lambda: self.search_var.set(""))
+        self.clear_search_btn.pack(side="left", padx=(4, 0))
         self.mod_list = VirtualModList(self, self.do_toggle_mod, self.do_remove_mod)
         self.mod_list.pack(fill="both", expand=True, padx=20, pady=(5, 15))
+        self._all_mods, self._all_off = [], []
         self.refresh_mods()
 
     def refresh_mods(self):
-        mods = instances.list_mods(self.inst.name)
-        off = mod_doctor.list_turned_off(self.inst.path)
-        title = tr('Mods ({0})', len(mods)) + (("   \u00b7   " + tr("{0} off", len(off))) if off else "")
+        import mod_doctor
+        self._all_mods = instances.list_mods(self.inst.name)
+        self._all_off = mod_doctor.list_turned_off(self.inst.path)
+        title = tr('Mods ({0})', len(self._all_mods)) + (
+            ("   \u00b7   " + tr("{0} off", len(self._all_off))) if self._all_off else "")
         self.mods_label.configure(text=title)
+        self._apply_filter()
+
+    def _apply_filter(self):
+        query = self.search_var.get().strip().lower()
+        off = [f for f in self._all_off if query in f.lower()] if query else list(self._all_off)
+        mods = [f for f in self._all_mods if query in f.lower()] if query else list(self._all_mods)
         items = []
         if off:
             items.append(("head", tr("Turned off ({0})", len(off))))
             items += [("mod", f, False) for f in off]
             items.append(("head", tr("Mods ({0})", len(mods))))
         items += [("mod", f, True) for f in mods]
-        self.mod_list.set_items(items, "" if items else tr("No mods in this instance."))
+        if query and not items:
+            message = tr('No mods match "{0}".', self.search_var.get().strip())
+        else:
+            message = "" if items else tr("No mods in this instance.")
+        self.mod_list.set_items(items, message)
         last = getattr(self, "_last_report", None)
         if last is not None:
             self._decorate_rows(last)
@@ -1713,6 +1782,7 @@ class ManageInstanceDialog(ModalDialog):
         self.mod_list.set_info(info)
 
     def do_toggle_mod(self, filename: str, want_on: bool):
+        import mod_doctor
         try:
             (mod_doctor.turn_on if want_on else mod_doctor.turn_off)(self.inst.path, filename)
         except OSError as e:
@@ -1724,6 +1794,7 @@ class ManageInstanceDialog(ModalDialog):
     # ---- mod health: duplicates + "needs a newer loader" ----
 
     def refresh_health(self):
+        import mod_doctor
         for w in self.health_frame.winfo_children():
             w.destroy()
         ctk.CTkLabel(self.health_frame, text=tr("Checking mods..."), text_color=COLOR_TEXT_MUTED,
@@ -1799,6 +1870,7 @@ class ManageInstanceDialog(ModalDialog):
                          anchor="w").pack(fill="x")
 
     def do_fix_duplicates(self, plan):
+        import mod_doctor
         lines = [tr("Keep {0} - delete {1}", w.name, l.name) for l, w, _ in plan.moves[:10]]
         text = tr("Delete {0} old copies? This can't be undone.", len(plan.moves))
         text += "\n\n" + "\n".join(lines)
@@ -1814,6 +1886,7 @@ class ManageInstanceDialog(ModalDialog):
         self.refresh_health()
 
     def do_restore_disabled(self):
+        import mod_doctor
         restored, skipped = mod_doctor.restore_all(self.inst.path)
         if skipped:
             messagebox.showinfo(tr("Restore all"), tr("Not restored (a mod with that name is already there):\n{0}",
@@ -1822,6 +1895,7 @@ class ManageInstanceDialog(ModalDialog):
         self.refresh_health()
 
     def do_delete_disabled(self):
+        import mod_doctor
         names = mod_doctor.list_disabled(self.inst.path)
         if not names:
             return
@@ -1936,6 +2010,7 @@ class WorldImportDialog(ModalDialog):
         self.scan()
 
     def scan(self):
+        import worlds
         self.status.configure(text=tr("Looking for worlds..."))
         for w in self.list_frame.winfo_children():
             w.destroy()
@@ -1951,6 +2026,7 @@ class WorldImportDialog(ModalDialog):
         threading.Thread(target=work, daemon=True).start()
 
     def _show(self, found):
+        import worlds
         if getattr(self, "_closed", False):
             return
         self.found = found
@@ -1978,6 +2054,7 @@ class WorldImportDialog(ModalDialog):
             self.scan()
 
     def do_import(self):
+        import worlds
         i = self.pick.get()
         if self._busy or not 0 <= i < len(self.found):
             return
@@ -2053,6 +2130,7 @@ class WorldBackupsDialog(ModalDialog):
         self.refresh()
 
     def refresh(self):
+        import world_backup
         for w in self.list_frame.winfo_children():
             w.destroy()
         items = world_backup.list_backups(self.inst.path)
@@ -2076,11 +2154,13 @@ class WorldBackupsDialog(ModalDialog):
             self.app.run_on_main_thread(fn)
 
     def do_open_folder(self):
+        import world_backup
         folder = world_backup.backups_dir(self.inst.path)
         folder.mkdir(parents=True, exist_ok=True)
         instances.open_folder(str(folder))
 
     def do_backup_now(self):
+        import world_backup
         if self._busy:
             return
         self._busy = True
@@ -2102,6 +2182,7 @@ class WorldBackupsDialog(ModalDialog):
         threading.Thread(target=worker, daemon=True).start()
 
     def do_restore(self, b):
+        import world_backup
         if self._busy:
             return
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(b.when))
@@ -2137,6 +2218,7 @@ class UpdatesDialog(ModalDialog):
     installs the ticked ones. The old jar goes to previous_mods and the whole batch can be undone."""
 
     def __init__(self, app: LauncherApp, inst: instances.Instance, on_changed=None):
+        import mod_updater
         super().__init__(app, title=tr('Mod updates: {0}', inst.name), width=560, height=560)
         self.inst = inst
         self.on_changed = on_changed
@@ -2228,6 +2310,7 @@ class UpdatesDialog(ModalDialog):
                                  text=tr("Update selected") + (f" ({n})" if n else ""))
 
     def do_apply(self):
+        import mod_updater
         chosen = [u for u, v in zip(self.updates, self.checks) if v.get() and u.url]
         if not chosen or self._busy:
             return
@@ -2261,6 +2344,7 @@ class UpdatesDialog(ModalDialog):
         messagebox.showinfo(tr("Updates"), text)
 
     def do_undo(self):
+        import mod_updater
         if not messagebox.askyesno(tr("Undo last update"), tr("Put the previous versions of the last updated mods back?")):
             return
         restored, problems = mod_updater.undo_last(self.inst)
@@ -2283,6 +2367,7 @@ class ChangeVersionDialog(ModalDialog):
              "Backing up worlds...", "Downloading new builds...", "Applying...")
 
     def __init__(self, app: LauncherApp, inst: instances.Instance, on_changed=None):
+        import version_change
         super().__init__(app, title=tr('Change version: {0}', inst.name), width=580, height=620)
         self.inst, self.on_changed, self.plan, self._busy = inst, on_changed, None, True
         loader = "" if inst.loader == "vanilla" else f", {inst.loader} {inst.loader_version}"
@@ -2368,6 +2453,7 @@ class ChangeVersionDialog(ModalDialog):
             self.check_btn.configure(state="normal")
 
     def do_check(self):
+        import version_change
         target = self.combo.get().strip()
         if self._busy or not target:
             return
@@ -2436,6 +2522,7 @@ class ChangeVersionDialog(ModalDialog):
         self.apply_btn.configure(state="normal" if ok else "disabled")
 
     def do_apply(self):
+        import version_change
         plan = self.plan
         if not plan or self._busy:
             return
@@ -2487,6 +2574,7 @@ class ChangeVersionDialog(ModalDialog):
         messagebox.showinfo(tr("Change version"), text)
 
     def do_undo(self):
+        import version_change
         if not messagebox.askyesno(tr("Undo last version change"),
                                    tr("Put back the previous version, mods and configs? Worlds are not touched.")):
             return
@@ -2507,6 +2595,7 @@ class DuplicateDialog(ModalDialog):
     """Copies the whole instance (mods, configs, worlds) under a new name - for keeping the old version too."""
 
     def __init__(self, app: LauncherApp, inst: instances.Instance):
+        import version_change
         super().__init__(app, title=tr('Duplicate: {0}', inst.name), width=480, height=300)
         self.inst, self._busy = inst, False
         ctk.CTkLabel(self, text=tr("Name of the copy:"), anchor="w").pack(fill="x", padx=20, pady=(14, 2))
@@ -2534,6 +2623,7 @@ class DuplicateDialog(ModalDialog):
             self.info.configure(text=tr("Copies everything, worlds included: about {0} MB.", f"{mb:,.0f}"))
 
     def do_duplicate(self):
+        import version_change
         name = self.entry.get().strip()
         if self._busy or not name:
             return
@@ -2608,6 +2698,7 @@ class AddModDialog(ModalDialog):
         threading.Thread(target=self._load_versions, daemon=True).start()
 
     def _load_versions(self):
+        import search
         try:
             if self.result["source"] == "modrinth":
                 all_versions = search.get_modrinth_versions(self.result["id"])
@@ -2778,14 +2869,17 @@ class ExportInstanceDialog(ModalDialog):
                 "loader": i.loader, "loader_version": i.loader_version}
 
     def _do_packwiz(self, on_progress=None):
+        import export_packwiz
         export_packwiz.export_to_packwiz(self.inst.path, self.output_path, pack_name=self.inst.name,
                                           fallback_meta=self._meta(), on_progress=on_progress)
 
     def _do_mrpack(self, on_progress=None):
+        import export_mrpack
         export_mrpack.export_to_mrpack(self.inst.path, self.output_path, pack_name=self.inst.name,
                                         fallback_meta=self._meta(), on_progress=on_progress)
 
     def _do_curseforge(self, on_progress=None):
+        import export_curseforge
         export_curseforge.export_to_curseforge(self.inst.path, self.output_path, pack_name=self.inst.name,
                                                 fallback_meta=self._meta(), on_progress=on_progress)
 
@@ -2852,6 +2946,7 @@ class SettingsDialog(ModalDialog):
     takes effect after a restart (the whole window is built from translated text)."""
 
     def __init__(self, app: LauncherApp):
+        import world_backup
         super().__init__(app, title=tr("Settings"), width=420, height=480)
         ctk.CTkLabel(self, text=tr("Language:")).pack(pady=(25, 5))
         self.lang_var = ctk.StringVar(value=i18n.LANGUAGES[i18n.current_language()])
@@ -2917,5 +3012,7 @@ class SettingsDialog(ModalDialog):
 
 
 if __name__ == "__main__":
+    crashlog.install(APP_VERSION)
     app = LauncherApp()
+    app.report_callback_exception = crashlog.report_tk
     app.mainloop()

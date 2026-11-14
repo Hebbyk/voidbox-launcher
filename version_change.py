@@ -27,6 +27,7 @@ import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+import atomicio
 import core
 import forge
 import instances
@@ -157,7 +158,7 @@ class ApplyResult:
 
 
 def _write_manifest(root: Path, manifest: dict):
-    (Path(root) / packs.MANIFEST_NAME).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    atomicio.write_text(Path(root) / packs.MANIFEST_NAME, json.dumps(manifest, indent=2))
 
 
 def apply(inst, plan: Plan, backup_worlds: bool = True, progress=None, on_copy_progress=None,
@@ -186,7 +187,7 @@ def apply(inst, plan: Plan, backup_worlds: bool = True, progress=None, on_copy_p
             "replaced": [], "removed": [], "had_manifest": False, "worlds_backup": False}
 
     def save_meta():
-        (snap / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        atomicio.write_text(snap / "meta.json", json.dumps(meta, indent=2))
 
     try:
         say("Saving a rollback snapshot...")
@@ -312,7 +313,7 @@ def undo(inst):
     inst.loader_version = meta["from_loader_version"]
     instances.save(inst)
     meta["undone"] = True
-    (snap / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    atomicio.write_text(snap / "meta.json", json.dumps(meta, indent=2))
     return restored, problems, (snap / "saves") if (snap / "saves").is_dir() else None
 
 

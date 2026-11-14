@@ -38,9 +38,9 @@ def _fetch_json(url: str, headers: dict | None = None) -> dict:
 # Searching
 # ---------------------------------------------------------------------------
 
-def search_modrinth(query: str, limit: int = 20) -> list[dict]:
+def search_modrinth(query: str, limit: int = 20, offset: int = 0) -> list[dict]:
     params = {"query": query, "facets": json.dumps([["project_type:modpack"]]),
-              "limit": str(limit)}
+              "limit": str(limit), "offset": str(offset)}
     url = f"{MODRINTH_API}/search?{urllib.parse.urlencode(params)}"
     resp = _fetch_json(url)
     return [{
@@ -54,9 +54,9 @@ def search_modrinth(query: str, limit: int = 20) -> list[dict]:
     } for hit in resp.get("hits", [])]
 
 
-def search_curseforge(query: str, api_key: str, limit: int = 20) -> list[dict]:
+def search_curseforge(query: str, api_key: str, limit: int = 20, offset: int = 0) -> list[dict]:
     params = {"gameId": CURSEFORGE_GAME_ID, "classId": CURSEFORGE_MODPACK_CLASS_ID,
-              "searchFilter": query, "pageSize": limit, "sortField": 2}
+              "searchFilter": query, "pageSize": limit, "index": offset, "sortField": 2}
     url = f"{cf_net.base()}/mods/search?{urllib.parse.urlencode(params)}"
     resp = _fetch_json(url, headers={"x-api-key": api_key, "Accept": "application/json"})
     return [{
@@ -69,11 +69,11 @@ def search_curseforge(query: str, api_key: str, limit: int = 20) -> list[dict]:
     } for mod in resp.get("data", [])]
 
 
-def search_modrinth_mods(query: str, limit: int = 20) -> list[dict]:
+def search_modrinth_mods(query: str, limit: int = 20, offset: int = 0) -> list[dict]:
     """Same shape as search_modrinth() but for individual mods, not packs —
     needed for adding a single mod to an already-installed instance."""
     params = {"query": query, "facets": json.dumps([["project_type:mod"]]),
-              "limit": str(limit)}
+              "limit": str(limit), "offset": str(offset)}
     url = f"{MODRINTH_API}/search?{urllib.parse.urlencode(params)}"
     resp = _fetch_json(url)
     return [{
@@ -87,10 +87,10 @@ def search_modrinth_mods(query: str, limit: int = 20) -> list[dict]:
     } for hit in resp.get("hits", [])]
 
 
-def search_curseforge_mods(query: str, api_key: str, limit: int = 20) -> list[dict]:
+def search_curseforge_mods(query: str, api_key: str, limit: int = 20, offset: int = 0) -> list[dict]:
     """Same shape as search_curseforge() but for individual mods."""
     params = {"gameId": CURSEFORGE_GAME_ID, "classId": CURSEFORGE_MOD_CLASS_ID,
-              "searchFilter": query, "pageSize": limit, "sortField": 2}
+              "searchFilter": query, "pageSize": limit, "index": offset, "sortField": 2}
     url = f"{cf_net.base()}/mods/search?{urllib.parse.urlencode(params)}"
     resp = _fetch_json(url, headers={"x-api-key": api_key, "Accept": "application/json"})
     return [{
@@ -103,25 +103,27 @@ def search_curseforge_mods(query: str, api_key: str, limit: int = 20) -> list[di
     } for mod in resp.get("data", [])]
 
 
-def search_all_mods(query: str, curseforge_api_key: str | None = None, limit: int = 10) -> list[dict]:
+def search_all_mods(query: str, curseforge_api_key: str | None = None, limit: int = 10,
+                     offset: int = 0) -> list[dict]:
     """Mods version of search_all() — used when adding to an existing
     instance instead of creating a new one from a modpack."""
-    results = search_modrinth_mods(query, limit)
+    results = search_modrinth_mods(query, limit, offset)
     if curseforge_api_key:
         try:
-            results += search_curseforge_mods(query, curseforge_api_key, limit)
+            results += search_curseforge_mods(query, curseforge_api_key, limit, offset)
         except SearchError as e:
             print(f"[search] CurseForge mod search failed, showing Modrinth results only: {e}")
     return results
 
 
-def search_all(query: str, curseforge_api_key: str | None = None, limit: int = 10) -> list[dict]:
+def search_all(query: str, curseforge_api_key: str | None = None, limit: int = 10,
+                offset: int = 0) -> list[dict]:
     """Searches both sources at once (skips CurseForge if no key given, rather
     than failing the whole search over a missing optional key)."""
-    results = search_modrinth(query, limit)
+    results = search_modrinth(query, limit, offset)
     if curseforge_api_key:
         try:
-            results += search_curseforge(query, curseforge_api_key, limit)
+            results += search_curseforge(query, curseforge_api_key, limit, offset)
         except SearchError as e:
             print(f"[search] CurseForge search failed, showing Modrinth results only: {e}")
     return results

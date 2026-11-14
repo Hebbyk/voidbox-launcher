@@ -26,10 +26,11 @@ if os.path.exists(os.path.join(HERE, "_relay.py")):
 else:
     print("[spec] NOTE: no _relay.py - this build talks to CurseForge directly")
 
-# Optional per-build tag module
-for _m in ("_canary",):
-    if os.path.exists(os.path.join(HERE, _m + ".py")):
-        hiddenimports += [_m]
+# Optional private extras: modules listed in private_includes.txt (not in git) are bundled too.
+_extras = os.path.join(HERE, "private_includes.txt")
+if os.path.exists(_extras):
+    with open(_extras, encoding="utf-8") as _f:
+        hiddenimports += [_l.strip() for _l in _f if _l.strip()]
 
 # The Russian and Ukrainian dictionaries are loaded on demand by i18n.py (only when selected).
 hiddenimports += ["lang_ru", "lang_uk"]

@@ -21,6 +21,7 @@ import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+import atomicio
 import core  # reuses the size-checked downloader from the launch engine
 
 MANIFEST_NAME = "pack_manifest.json"
@@ -64,7 +65,7 @@ def write_manifest(resolved: ResolvedPack, instance_root: Path) -> Path:
         "files": [asdict(f) for f in resolved.files],
     }
     path = instance_root / MANIFEST_NAME
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    atomicio.write_text(path, json.dumps(data, indent=2))
     return path
 
 
@@ -96,8 +97,7 @@ def add_file_to_manifest(instance_root: Path, resolved_file: "ResolvedFile", *,
     kept = [f for f in manifest["files"] if f["path"].replace("\\", "/") != norm]
     kept.append(asdict(resolved_file))
     manifest["files"] = kept
-    (Path(instance_root) / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2),
-                                                      encoding="utf-8")
+    atomicio.write_text(Path(instance_root) / MANIFEST_NAME, json.dumps(manifest, indent=2))
 
 
 def remove_file_from_manifest(instance_root: Path, rel_path: str) -> bool:
@@ -113,8 +113,7 @@ def remove_file_from_manifest(instance_root: Path, rel_path: str) -> bool:
     if len(kept) == len(manifest["files"]):
         return False
     manifest["files"] = kept
-    (Path(instance_root) / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2),
-                                                      encoding="utf-8")
+    atomicio.write_text(Path(instance_root) / MANIFEST_NAME, json.dumps(manifest, indent=2))
     return True
 
 

@@ -20,6 +20,8 @@ import os
 import sys
 from pathlib import Path
 
+import atomicio
+
 LANGUAGES = {"en": "English", "ru": "Русский", "uk": "Українська"}
 DEFAULT_LANGUAGE = "en"
 REGISTRY_KEY = r"Software\Hebby\VoidboxLauncher"
@@ -47,7 +49,7 @@ def _read_config() -> dict:
 def _write_config(data: dict) -> None:
     try:
         config_path().parent.mkdir(parents=True, exist_ok=True)
-        config_path().write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomicio.write_text(config_path(), json.dumps(data, indent=2, ensure_ascii=False))
     except OSError as e:
         print(f"[i18n] couldn't save settings ({type(e).__name__})")
 

@@ -25,6 +25,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import atomicio
 import cf_net
 import core
 import mod_doctor
@@ -353,7 +354,7 @@ def apply(inst, updates, progress=None):
     shutil.rmtree(tmp, ignore_errors=True)
     if batch:
         hist = _load_history(root)[-19:] + [{"time": int(time.time()), "items": batch}]
-        _history_path(root).write_text(json.dumps(hist, indent=2), encoding="utf-8")
+        atomicio.write_text(_history_path(root), json.dumps(hist, indent=2))
     return done, failed
 
 
@@ -386,7 +387,7 @@ def undo_last(inst):
             restored.append(it["old"])
         except OSError as e:
             problems.append(f"{it['old']}: {e}")
-    _history_path(root).write_text(json.dumps(hist, indent=2), encoding="utf-8")
+    atomicio.write_text(_history_path(root), json.dumps(hist, indent=2))
     return restored, problems
 
 

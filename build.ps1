@@ -24,11 +24,8 @@ else { $Version = [regex]::Match((Get-Content version.py -Raw), 'APP_VERSION\s*=
 if (-not $Version) { throw "Couldn't read APP_VERSION from version.py" }
 Write-Host "Building version $Version" -ForegroundColor Cyan
 
-# Per-version build tag.
-if (Test-Path canary.py) {
-    py canary.py ensure $Version
-    if ($LASTEXITCODE -ne 0) { throw "canary.py failed" }
-}
+# Optional private pre-build step (not in git).
+if (Test-Path private_prebuild.ps1) { & .\private_prebuild.ps1 $Version }
 
 Write-Host "== 1/2  PyInstaller ==" -ForegroundColor Cyan
 
