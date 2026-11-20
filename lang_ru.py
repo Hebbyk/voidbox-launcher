@@ -366,3 +366,40 @@ RU = {
     # --- mod list: turned-off section
     'Turned off ({0})': 'Выключены ({0})',
 }
+
+RU.update({
+    'Update modpack': 'Обновить сборку',
+    'Update modpack: {0}': 'Обновление сборки: {0}',
+    'Update': 'Обновить',
+    'Undo last pack update': 'Отменить обновление сборки',
+    'Linked to a {0} modpack page. Installed version: {1}': 'Привязано к странице сборки ({0}). Установленная версия: {1}',
+    'unknown': 'неизвестна',
+    'Version:': 'Версия:',
+    '(installed)': '(установлена)',
+    'Not the right pack? Change pack page': 'Не та сборка? Сменить страницу сборки',
+    '{0} mods added, {1} replaced, {2} removed, {3} unchanged': 'Модов: добавлено {0}, заменено {1}, удалено {2}, без изменений {3}',
+    'Added:': 'Добавлено:',
+    'Replaced:': 'Заменено:',
+    'Removed because the pack dropped them:': 'Удалено, так как их убрали из сборки:',
+    'No longer in the pack, but kept (this instance was installed before pack tracking):': 'Больше не входят в сборку, но оставлены (экземпляр установлен до учёта сборок):',
+    'Config files: {0} new, {1} updated, {2} edited by you and kept as they are': 'Файлы настроек: новых {0}, обновлено {1}, изменено вами и оставлено как есть {2}',
+    'Nothing to change - this instance already matches that version.': 'Менять нечего - экземпляр уже соответствует этой версии.',
+    'Update {0} to {1}?': 'Обновить {0} до {1}?',
+    'Your worlds, your own mods and configs you edited stay as they are. You can undo this afterwards.': 'Ваши миры, свои моды и изменённые вами настройки останутся как есть. Потом обновление можно отменить.',
+    'Updated to {0}: {1} added, {2} replaced, {3} removed.': 'Обновлено до {0}: добавлено {1}, заменено {2}, удалено {3}.',
+    'If the game says a mod is loaded twice, use Fix duplicates in Manage.': 'Если игра пишет, что мод загружен дважды, нажмите «Исправить дубликаты» в управлении.',
+    'Put back the previous pack version, mods and configs? Worlds are not touched.': 'Вернуть прошлую версию сборки, моды и настройки? Миры не затрагиваются.',
+    'Restored {0} files.': 'Восстановлено файлов: {0}.',
+    'A worlds backup from before the update is still at: {0}': 'Копия миров до обновления осталась здесь: {0}',
+    'Which modpack is this instance? Search for its page, then pick it.': 'Что это за сборка? Найдите её страницу и выберите её.',
+    'Search modpacks...': 'Поиск сборок...',
+    'Search': 'Поиск',
+    'Searching...': 'Поиск...',
+    'Nothing found.': 'Ничего не найдено.',
+    "Link '{0}' to {1}: {2}?": 'Привязать «{0}» к {1}: {2}?',
+})
+
+RU.update({
+    'Removed (not in the new pack - Undo brings them back):': 'Удалено (нет в новой сборке - «Отменить» вернёт их):',
+    'Your worlds and configs you edited stay as they are. Mods that are not in the new pack are removed so nothing unneeded is left (Undo brings them back).': 'Ваши миры и изменённые вами настройки останутся как есть. Моды, которых нет в новой сборке, будут убраны, чтобы не осталось лишнего («Отменить» вернёт их).',
+})

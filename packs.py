@@ -16,6 +16,7 @@ the URLs/hashes resolved at import time are thrown away. Lives next to the
 instance's minecraft/ folder, not inside it, so it never ends up in an export
 or gets clobbered by overrides.
 """
+import hashlib
 import json
 import shutil
 from dataclasses import asdict, dataclass, field
@@ -52,7 +53,7 @@ class ResolvedPack:
     overrides_dir: Path | None = None  # local folder to copy wholesale (configs, etc.)
 
 
-def write_manifest(resolved: ResolvedPack, instance_root: Path) -> Path:
+def write_manifest(resolved: ResolvedPack, instance_root: Path, override_hashes: dict | None = None) -> Path:
     """Saves what was resolved at import time. Only called after every download
     succeeded, so the manifest never lists a file that isn't actually there."""
     instance_root = Path(instance_root).resolve()
@@ -63,6 +64,11 @@ def write_manifest(resolved: ResolvedPack, instance_root: Path) -> Path:
         "loader": resolved.loader,
         "loader_version": resolved.loader_version,
         "files": [asdict(f) for f in resolved.files],
+        # which files came from the pack itself (vs. mods the player adds later) and the hashes of the
+        # override files as installed - pack_update.py needs both to update a pack without touching the
+        # player's own stuff
+        "pack_files": [f.path.replace("\\", "/") for f in resolved.files],
+        "override_hashes": override_hashes or {},
     }
     path = instance_root / MANIFEST_NAME
     atomicio.write_text(path, json.dumps(data, indent=2))
@@ -133,11 +139,16 @@ def install_pack(resolved: ResolvedPack, instance_root: Path, on_progress=None) 
         if on_progress:
             on_progress(i, total)
 
+    override_hashes = {}
     if resolved.overrides_dir and Path(resolved.overrides_dir).exists():
         print("[packs] copying overrides...")
         shutil.copytree(resolved.overrides_dir, mc_dir, dirs_exist_ok=True)
+        ovd = Path(resolved.overrides_dir)
+        for f in ovd.rglob("*"):
+            if f.is_file():
+                override_hashes[str(f.relative_to(ovd)).replace("\\", "/")] = hashlib.sha1(f.read_bytes()).hexdigest()
 
-    write_manifest(resolved, instance_root)
+    write_manifest(resolved, instance_root, override_hashes)
 
     print(f"[packs] '{resolved.name}' content installed — needs "
           f"{resolved.loader or 'vanilla'} {resolved.loader_version or ''} "

@@ -1476,7 +1476,10 @@ class InstallPackDialog(ModalDialog):
                     tr('Installing {0}...', name)))
                 instances.create_from_pack_file(name, str(pack_path), DEFAULT_INSTANCES_DIR,
                                                  curseforge_api_key=self.curseforge_api_key,
-                                                 on_progress=on_progress)
+                                                 on_progress=on_progress,
+                                                 source_extra={"project_id": self.result["id"],
+                                                               "version_id": chosen["id"],
+                                                               "version_name": chosen["name"]})
                 self.app.run_on_main_thread(self.app._stop_progress)
                 self.app.run_on_main_thread(lambda: messagebox.showinfo(
                     tr("Done"), tr("'{0}' installed successfully.", name)))
@@ -1704,6 +1707,8 @@ class ManageInstanceDialog(ModalDialog):
                    (tr("Change version..."), self.do_change_version, quiet),
                    (tr("Duplicate..."), self.do_duplicate, quiet),
                    (tr("Open Instance Folder"), self.do_open_folder, quiet)]
+        if packs.read_manifest(Path(inst.path)) is not None:      # only for instances installed from a modpack
+            buttons.insert(5, (tr("Update modpack"), self.do_update_pack, quiet))
         for i, (text, cmd, style) in enumerate(buttons):
             ctk.CTkButton(grid, text=text, command=cmd, **style).grid(
                 row=i // 3, column=i % 3, sticky="ew", padx=3, pady=3)
@@ -1923,6 +1928,10 @@ class ManageInstanceDialog(ModalDialog):
 
     def do_change_version(self):
         ChangeVersionDialog(self.app, self.inst, on_changed=lambda: (
+            self._reload_inst(), self.refresh_mods(), self.refresh_health(), self.app.refresh_instances()))
+
+    def do_update_pack(self):
+        PackUpdateDialog(self.app, self.inst, on_changed=lambda: (
             self._reload_inst(), self.refresh_mods(), self.refresh_health(), self.app.refresh_instances()))
 
     def do_duplicate(self):
@@ -2589,6 +2598,293 @@ class ChangeVersionDialog(ModalDialog):
         if not getattr(self, "_closed", False):
             self.close()
         messagebox.showinfo(tr("Undo last version change"), text)
+
+
+class PackUpdateDialog(ModalDialog):
+    """Updates a modpack instance IN PLACE to another version of the same pack. Only the pack's own files change:
+    saves, your own mods, mods you turned off and configs you edited are left alone. A read-only check comes first,
+    and a rollback snapshot is saved before anything changes."""
+
+    FIXED = ("Downloading the new pack version...", "Reading it...", "Applying...", "Backing up worlds...")
+
+    def __init__(self, app: LauncherApp, inst: instances.Instance, on_changed=None, force_link: bool = False):
+        import pack_update
+        super().__init__(app, title=tr("Update modpack: {0}", inst.name), width=580, height=640)
+        self.inst, self.on_changed, self.plan, self.versions, self._busy = inst, on_changed, None, [], False
+        self.cf_key = settings.get_curseforge_api_key()
+        self.src = None if force_link else pack_update.source_info(inst)
+
+        bottom = ctk.CTkFrame(self, fg_color="transparent")
+        bottom.pack(fill="x", padx=20, pady=(0, 12), side="bottom")
+        self.undo_btn = ctk.CTkButton(bottom, text=tr("Undo last pack update"), command=self.do_undo,
+                                       fg_color=COLOR_BUTTON_SECONDARY, hover_color=COLOR_BUTTON_SECONDARY_HOVER)
+        if pack_update.latest_snapshot(inst):
+            self.undo_btn.pack(side="left")
+        self.apply_btn = ctk.CTkButton(bottom, text=tr("Update"), command=self.do_apply, state="disabled")
+        self.progress = ctk.CTkProgressBar(self, mode="indeterminate")
+        self.backup_var = ctk.BooleanVar(value=False)
+        self.backup_box = ctk.CTkCheckBox(self, text=tr("Back up my worlds first"), variable=self.backup_var)
+
+        self.status = ctk.CTkLabel(self, text="", text_color=COLOR_TEXT_MUTED, anchor="w", justify="left",
+                                   wraplength=520)
+        self.result = ctk.CTkScrollableFrame(self)
+        if self.src:
+            self._build_update_ui()
+        else:
+            self._build_link_ui()
+
+    # ---- linked: pick a version, check, apply -------------------------------------------------------------
+    def _build_update_ui(self):
+        import pack_update
+        self.apply_btn.pack(side="right")
+        self.backup_box.pack(fill="x", padx=20, pady=(0, 6), side="bottom")
+        ver = self.src.get("version_name") or tr("unknown")
+        ctk.CTkLabel(self, text=tr("Linked to a {0} modpack page. Installed version: {1}",
+                                   str(self.src.get("type", "")).capitalize(), ver),
+                     anchor="w", justify="left", wraplength=520).pack(fill="x", padx=20, pady=(10, 4))
+        pick = ctk.CTkFrame(self, fg_color="transparent")
+        pick.pack(fill="x", padx=20)
+        ctk.CTkLabel(pick, text=tr("Version:")).pack(side="left")
+        self.combo = ctk.CTkComboBox(pick, values=[tr("Loading versions...")], width=330, state="disabled")
+        self.combo.pack(side="left", padx=8)
+        self.check_btn = ctk.CTkButton(pick, text=tr("Check"), width=80, command=self.do_check, state="disabled",
+                                        fg_color=COLOR_BUTTON_SECONDARY, hover_color=COLOR_BUTTON_SECONDARY_HOVER)
+        self.check_btn.pack(side="left")
+        ctk.CTkButton(self, text=tr("Not the right pack? Change pack page"), height=22, fg_color="transparent",
+                      text_color=COLOR_TEXT_MUTED, hover_color=COLOR_SECONDARY_HOVER,
+                      command=self.do_relink).pack(anchor="w", padx=16, pady=(4, 0))
+        self.status.configure(text=tr("Pick a version and press Check. Nothing is changed by checking."))
+        self.status.pack(fill="x", padx=20, pady=(6, 0))
+        self.result.pack(fill="both", expand=True, padx=20, pady=8)
+
+        def load():
+            try:
+                versions = pack_update.list_versions(self.inst, self.cf_key)
+            except Exception as e:
+                versions = e
+            self.app.run_on_main_thread(lambda: self._versions_loaded(versions))
+        threading.Thread(target=load, daemon=True).start()
+
+    def _versions_loaded(self, versions):
+        if getattr(self, "_closed", False):
+            return
+        if isinstance(versions, Exception) or not versions:
+            msg = str(versions) if isinstance(versions, Exception) else tr("No versions found")
+            self.status.configure(text=tr("Couldn't load versions") + ": " + msg, text_color="#FF8FAE")
+            return
+        self.versions = versions
+        self.labels = [InstallPackDialog._format_label(v) + ("  " + tr("(installed)") if v.get("installed") else "")
+                       for v in versions]
+        self.combo.configure(values=self.labels, state="readonly")
+        self.combo.set(self.labels[0])
+        self.check_btn.configure(state="normal")
+
+    def _say(self, text):
+        if not getattr(self, "_closed", False):
+            self.status.configure(text=tr(text) if text in self.FIXED else text, text_color=COLOR_TEXT_MUTED)
+
+    def _busy_on(self, on: bool):
+        self._busy = on
+        if on:
+            self.progress.pack(fill="x", padx=20, pady=(0, 6), side="bottom")
+            self.progress.start()
+            self.check_btn.configure(state="disabled")
+            self.apply_btn.configure(state="disabled")
+        else:
+            self.progress.stop()
+            self.progress.pack_forget()
+            self.check_btn.configure(state="normal")
+
+    def do_check(self):
+        import pack_update
+        if self._busy or not self.versions:
+            return
+        try:
+            chosen = self.versions[self.labels.index(self.combo.get())]
+        except ValueError:
+            return
+        self.plan = None
+        for w in self.result.winfo_children():
+            w.destroy()
+        self._busy_on(True)
+
+        def work():
+            try:
+                plan = pack_update.plan_update(self.inst, chosen, self.cf_key,
+                                               progress=lambda t: self.app.run_on_main_thread(lambda: self._say(t)))
+            except Exception as e:
+                plan = e
+            self.app.run_on_main_thread(lambda: self._show_plan(plan))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_plan(self, plan):
+        if getattr(self, "_closed", False):
+            return
+        self._busy_on(False)
+        if isinstance(plan, Exception):
+            self.status.configure(text=str(plan), text_color="#FF8FAE")
+            return
+        self.plan = plan
+
+        def line(text, color=COLOR_TEXT_MUTED, bold=False):
+            ctk.CTkLabel(self.result, text=text, anchor="w", justify="left", wraplength=500, text_color=color,
+                         font=ctk.CTkFont(weight="bold") if bold else None).pack(fill="x", pady=(0, 3))
+
+        def names(paths, limit=25):
+            short = [p.rsplit("/", 1)[-1] for p in paths[:limit]]
+            return ", ".join(short) + (" ..." if len(paths) > limit else "")
+
+        nothing = not (plan.add or plan.change or plan.remove or plan.ov_add or plan.ov_overwrite)
+        self.status.configure(text=tr("{0} mods added, {1} replaced, {2} removed, {3} unchanged", len(plan.add),
+                                      len(plan.change), len(plan.remove), plan.unchanged), text_color=COLOR_TEXT_MUTED)
+        for w in plan.warnings:
+            line(w, "#F5B85C", bold=True)
+        if plan.add:
+            line(tr("Added:"), bold=True)
+            line(names([f.path for f in plan.add]))
+        if plan.change:
+            line(tr("Replaced:"), bold=True)
+            line(names([f.path for f in plan.change]))
+        if plan.remove:
+            line(tr("Removed (not in the new pack - Undo brings them back):"), bold=True)
+            line(names(plan.remove))
+        if plan.ov_add or plan.ov_overwrite or plan.ov_conflict:
+            line(tr("Config files: {0} new, {1} updated, {2} edited by you and kept as they are",
+                    len(plan.ov_add), len(plan.ov_overwrite), len(plan.ov_conflict)), bold=True)
+        if nothing:
+            line(tr("Nothing to change - this instance already matches that version."))
+        self.backup_var.set(bool(plan.mc_changed))
+        self.apply_btn.configure(state="disabled" if nothing else "normal")
+
+    def do_apply(self):
+        import pack_update
+        plan = self.plan
+        if not plan or self._busy:
+            return
+        name = plan.version.get("name") or ""
+        text = tr("Update {0} to {1}?", self.inst.name, name) + "\n\n" + tr(
+            "{0} mods added, {1} replaced, {2} removed, {3} unchanged", len(plan.add), len(plan.change),
+            len(plan.remove), plan.unchanged) + "\n\n" + tr(
+            "Your worlds and configs you edited stay as they are. Mods that are not in the new pack are removed so "
+            "nothing unneeded is left (Undo brings them back).")
+        if not messagebox.askyesno(tr("Update modpack"), text):
+            return
+        self._busy_on(True)
+        backup = bool(self.backup_var.get())        # read Tk variables HERE, on the main thread - never in work()
+        last = [-1]
+
+        def copy_progress(done, total):
+            pct = int(done * 100 / total) if total else 100
+            if pct != last[0]:
+                last[0] = pct
+                self.app.run_on_main_thread(lambda: self.status.configure(text=tr("Backing up worlds... {0}%", pct)))
+
+        def work():
+            try:
+                res = pack_update.apply_update(self.inst, plan, backup_worlds=backup,
+                                               progress=lambda t: self.app.run_on_main_thread(lambda: self._say(t)),
+                                               on_copy_progress=copy_progress)
+            except Exception as e:
+                res = e
+            self.app.run_on_main_thread(lambda: self._applied(res, plan))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _applied(self, res, plan):
+        if self.on_changed:
+            self.on_changed()
+        if not getattr(self, "_closed", False):
+            self.close()
+        if isinstance(res, Exception):
+            messagebox.showerror(tr("Update modpack"), str(res))
+            return
+        text = tr("Updated to {0}: {1} added, {2} replaced, {3} removed.", plan.version.get("name") or "",
+                  res.added, res.changed, res.removed)
+        text += "\n\n" + tr("If the game says a mod is loaded twice, use Fix duplicates in Manage.")
+        text += "\n\n" + tr("Rollback snapshot: {0}", str(res.snapshot))
+        if res.worlds_backup:
+            text += "\n" + tr("Worlds backup: {0}", str(res.worlds_backup))
+        messagebox.showinfo(tr("Update modpack"), text)
+
+    def do_undo(self):
+        import pack_update
+        if not messagebox.askyesno(tr("Undo last pack update"),
+                                   tr("Put back the previous pack version, mods and configs? Worlds are not touched.")):
+            return
+        restored, problems, backup = pack_update.undo(self.inst)
+        if self.on_changed:
+            self.on_changed()
+        text = tr("Restored {0} files.", restored)
+        if problems:
+            text += "\n\n" + "\n".join(problems[:8])
+        if backup:
+            text += "\n\n" + tr("A worlds backup from before the update is still at: {0}", str(backup))
+        if not getattr(self, "_closed", False):
+            self.close()
+        messagebox.showinfo(tr("Undo last pack update"), text)
+
+    def do_relink(self):
+        on_changed, inst, app = self.on_changed, self.inst, self.app
+        self.close()
+        PackUpdateDialog(app, inst, on_changed, force_link=True)
+
+    # ---- not linked yet: find the pack's page --------------------------------------------------------------
+    def _build_link_ui(self):
+        import pack_update
+        ctk.CTkLabel(self, text=tr("Which modpack is this instance? Search for its page, then pick it."),
+                     anchor="w", justify="left", wraplength=520).pack(fill="x", padx=20, pady=(10, 4))
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack(fill="x", padx=20)
+        manifest = packs.read_manifest(Path(self.inst.path)) or {}
+        self.query = ctk.CTkEntry(row, placeholder_text=tr("Search modpacks..."))
+        self.query.insert(0, manifest.get("name") or self.inst.name)
+        self.query.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.query.bind("<Return>", lambda _e: self.do_search())
+        self.search_btn = ctk.CTkButton(row, text=tr("Search"), width=90, command=self.do_search)
+        self.search_btn.pack(side="right")
+        self.status.pack(fill="x", padx=20, pady=(6, 0))
+        self.result.pack(fill="both", expand=True, padx=20, pady=8)
+        self.do_search()
+
+    def do_search(self):
+        import search
+        q = self.query.get().strip()
+        if self._busy or not q:
+            return
+        self._busy = True
+        for w in self.result.winfo_children():
+            w.destroy()
+        self.status.configure(text=tr("Searching..."), text_color=COLOR_TEXT_MUTED)
+
+        def work():
+            try:
+                found = search.search_all(q, curseforge_api_key=self.cf_key)
+            except Exception as e:
+                found = e
+            self.app.run_on_main_thread(lambda: self._search_done(found))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _search_done(self, found):
+        if getattr(self, "_closed", False):
+            return
+        self._busy = False
+        if isinstance(found, Exception):
+            self.status.configure(text=str(found), text_color="#FF8FAE")
+            return
+        self.status.configure(text="" if found else tr("Nothing found."), text_color=COLOR_TEXT_MUTED)
+        for r in found:
+            ctk.CTkButton(self.result, text=f"{r['title']}   \u00b7   {str(r['source']).capitalize()}", anchor="w",
+                          fg_color=COLOR_BUTTON_SECONDARY, hover_color=COLOR_BUTTON_SECONDARY_HOVER,
+                          command=lambda r=r: self._pick_pack(r)).pack(fill="x", pady=2)
+
+    def _pick_pack(self, r):
+        import pack_update
+        if not messagebox.askyesno(tr("Update modpack"), tr("Link '{0}' to {1}: {2}?", self.inst.name,
+                                                             str(r["source"]).capitalize(), r["title"])):
+            return
+        pack_update.link(self.inst.name, r["source"], r["id"])
+        on_changed, app, name = self.on_changed, self.app, self.inst.name
+        self.close()
+        PackUpdateDialog(app, instances.get(name), on_changed)
 
 
 class DuplicateDialog(ModalDialog):

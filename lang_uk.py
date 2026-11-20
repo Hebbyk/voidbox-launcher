@@ -365,3 +365,40 @@ UK = {
     # --- mod list: turned-off section
     'Turned off ({0})': 'Вимкнені ({0})',
 }
+
+UK.update({
+    'Update modpack': 'Оновити збірку',
+    'Update modpack: {0}': 'Оновлення збірки: {0}',
+    'Update': 'Оновити',
+    'Undo last pack update': 'Скасувати оновлення збірки',
+    'Linked to a {0} modpack page. Installed version: {1}': "Прив'язано до сторінки збірки ({0}). Встановлена версія: {1}",
+    'unknown': 'невідома',
+    'Version:': 'Версія:',
+    '(installed)': '(встановлена)',
+    'Not the right pack? Change pack page': 'Не та збірка? Змінити сторінку збірки',
+    '{0} mods added, {1} replaced, {2} removed, {3} unchanged': 'Модів: додано {0}, замінено {1}, видалено {2}, без змін {3}',
+    'Added:': 'Додано:',
+    'Replaced:': 'Замінено:',
+    'Removed because the pack dropped them:': 'Видалено, бо їх прибрали зі збірки:',
+    'No longer in the pack, but kept (this instance was installed before pack tracking):': 'Більше не входять до збірки, але залишені (екземпляр встановлено до обліку збірок):',
+    'Config files: {0} new, {1} updated, {2} edited by you and kept as they are': 'Файли налаштувань: нових {0}, оновлено {1}, змінено вами й залишено як є {2}',
+    'Nothing to change - this instance already matches that version.': 'Змінювати нічого - екземпляр уже відповідає цій версії.',
+    'Update {0} to {1}?': 'Оновити {0} до {1}?',
+    'Your worlds, your own mods and configs you edited stay as they are. You can undo this afterwards.': 'Ваші світи, власні моди та змінені вами налаштування залишаться як є. Потім оновлення можна скасувати.',
+    'Updated to {0}: {1} added, {2} replaced, {3} removed.': 'Оновлено до {0}: додано {1}, замінено {2}, видалено {3}.',
+    'If the game says a mod is loaded twice, use Fix duplicates in Manage.': 'Якщо гра пише, що мод завантажено двічі, натисніть «Виправити дублікати» в керуванні.',
+    'Put back the previous pack version, mods and configs? Worlds are not touched.': 'Повернути попередню версію збірки, моди та налаштування? Світи не зачіпаються.',
+    'Restored {0} files.': 'Відновлено файлів: {0}.',
+    'A worlds backup from before the update is still at: {0}': 'Копія світів до оновлення залишилась тут: {0}',
+    'Which modpack is this instance? Search for its page, then pick it.': 'Що це за збірка? Знайдіть її сторінку та оберіть її.',
+    'Search modpacks...': 'Пошук збірок...',
+    'Search': 'Пошук',
+    'Searching...': 'Пошук...',
+    'Nothing found.': 'Нічого не знайдено.',
+    "Link '{0}' to {1}: {2}?": "Прив'язати «{0}» до {1}: {2}?",
+})
+
+UK.update({
+    'Removed (not in the new pack - Undo brings them back):': 'Видалено (немає в новій збірці - «Скасувати» поверне їх):',
+    'Your worlds and configs you edited stay as they are. Mods that are not in the new pack are removed so nothing unneeded is left (Undo brings them back).': 'Ваші світи та змінені вами налаштування залишаться як є. Моди, яких немає в новій збірці, буде прибрано, щоб не лишилось зайвого («Скасувати» поверне їх).',
+})

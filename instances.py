@@ -255,7 +255,8 @@ def detect_pack_format(pack_path) -> str:
 
 
 def create_from_pack_file(name: str, pack_path: str, base_dir: Path,
-                           curseforge_api_key: str | None = None, on_progress=None) -> Instance:
+                           curseforge_api_key: str | None = None, on_progress=None,
+                           source_extra: dict | None = None) -> Instance:
     """Auto-detects the pack format by looking inside the archive (see
     detect_pack_format), downloads its mods into a new instance, and
     registers it. on_progress(current, total), if given, is forwarded to
@@ -281,6 +282,7 @@ def create_from_pack_file(name: str, pack_path: str, base_dir: Path,
 
     packs.install_pack(resolved, instance_root, on_progress=on_progress)
 
+    source.update(source_extra or {})     # project_id / version_id when it came from a search result
     inst = Instance(
         name=name, path=str(instance_root), minecraft_version=resolved.minecraft_version,
         loader=resolved.loader or "vanilla", loader_version=resolved.loader_version or "latest",
