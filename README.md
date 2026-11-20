@@ -1,6 +1,6 @@
 # Voidbox Launcher
 
-**English** | [Русский](README.ru.md)
+**English** | [Русский](README.ru.md) | [Українська](README.uk.md)
 
 A free, lightweight Minecraft launcher built around modpacks: drag in a pack, press Play. No ads, no tracking.
 
@@ -29,14 +29,14 @@ Windows only for now.
 - **Crash helper**: if the game closes with an error, the launcher shows the real error lines from the log, with Copy and Open-folder buttons.
 
 **The basics**
-- **English and Russian interface.**
+- **English, Russian and Ukrainian interface.**
 - **Microsoft and ely.by sign-in.**
 - **Update checks** through GitHub Releases.
 - **No ads, no tracking.**
 
 ## Community
 
-Questions, bug reports and ideas are welcome on the [Discord server](https://discord.gg/xH3Rg4vKNb). English and Russian are both fine.
+Questions, bug reports and ideas are welcome on the [Discord server](https://discord.gg/xH3Rg4vKNb). English, Russian and Ukrainian are all fine.
 
 ## Something went wrong?
 
